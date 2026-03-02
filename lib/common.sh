@@ -101,5 +101,7 @@ reload_supervisor() { supervisorctl reread &>/dev/null; supervisorctl update &>/
 mkdir -p "${CIPI_CONFIG}" "${CIPI_LOG}"
 chmod 700 "${CIPI_CONFIG}"
 for f in apps.json databases.json; do
-    [[ ! -f "${CIPI_CONFIG}/$f" ]] && echo "{}" > "${CIPI_CONFIG}/$f" && chmod 600 "${CIPI_CONFIG}/$f"
+    if [[ ! -f "${CIPI_CONFIG}/$f" ]]; then
+        echo "{}" > "${CIPI_CONFIG}/$f" && chmod 600 "${CIPI_CONFIG}/$f"
+    fi
 done

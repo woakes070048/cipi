@@ -39,7 +39,7 @@ A single VPS becomes a multi-app Laravel hosting platform:
 
 - **Nginx** reverse proxy with per-app virtual hosts
 - **MariaDB 11.4** auto-tuned to your server's RAM
-- **PHP 8.1 / 8.2 / 8.3 / 8.4** — all installed, selectable per app
+- **PHP 8.4 / 8.5** — all installed, selectable per app
 - **Redis** for cache, sessions, and queues
 - **Supervisor** managing queue workers per app
 - **Deployer 7** for zero-downtime deployments
@@ -56,11 +56,15 @@ Every app runs under its own Linux user. Isolated filesystem, isolated PHP-FPM p
 
 **Requirements:** Ubuntu 24.04 LTS (or higher), root access, ports 22/80/443 open.
 
-```bash
-# Standard install
-wget -O - https://raw.githubusercontent.com/andreapollastri/cipi/refs/heads/latest/install.sh | bash
+Standard installation
 
-# AWS (where root login is disabled by default)
+```bash
+wget -O - https://raw.githubusercontent.com/andreapollastri/cipi/refs/heads/latest/install.sh | bash
+```
+
+AWS (where root login is disabled by default)
+
+```bash
 ssh ubuntu@your-server-ip
 sudo -s
 wget -O - https://raw.githubusercontent.com/andreapollastri/cipi/refs/heads/latest/install.sh | bash
@@ -221,14 +225,14 @@ The `.env` is **auto-compiled** with all credentials — database, Redis, webhoo
 
 ### Multi-PHP
 
-All four PHP versions (8.1, 8.2, 8.3, 8.4) are installed during setup. You choose the version per app:
+Current PHP versions (8.4, 8.5) are installed during setup. You choose the version per app:
 
 ```bash
-# Create an app on PHP 8.2 (for an older Laravel project)
-cipi app create --user=legacy --domain=legacy.com --php=8.2
+# Create an app on PHP 8.4 (for an older Laravel project)
+cipi app create --user=legacy --domain=legacy.com --php=8.4
 
 # Switch an app to a different PHP version (hot swap, no downtime)
-cipi app edit myapp --php=8.3
+cipi app edit myapp --php=8.5
 ```
 
 Switching PHP updates everything: FPM pool, Nginx socket, Supervisor workers, crontab, Deployer config, and the `.env`.
@@ -240,7 +244,7 @@ When PHP 8.5 or later versions are released, Cipi will support them through upda
 ```bash
 cipi php install 8.5    # when available in the ondrej/php PPA
 cipi php list            # see all installed versions and their status
-cipi php remove 8.1      # remove a version (only if no apps use it)
+cipi php remove 8.4      # remove a version (only if no apps use it)
 ```
 
 Cipi uses the [ondrej/php PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) which is the de-facto standard for PHP on Ubuntu. New PHP releases typically land there within days of their official release.
@@ -599,7 +603,7 @@ Credentials (database passwords, webhook tokens) are generated using `openssl ra
 | `cipi app create --user=U --domain=D --repository=R --php=V` | Create app (flags)               |
 | `cipi app list`                                              | List all apps                    |
 | `cipi app show <app>`                                        | App details, deploy key, workers |
-| `cipi app edit <app> --php=8.3`                              | Change PHP version               |
+| `cipi app edit <app> --php=8.5`                              | Change PHP version               |
 | `cipi app edit <app> --branch=develop`                       | Change deploy branch             |
 | `cipi app delete <app>`                                      | Delete app (with confirmation)   |
 | `cipi app env <app>`                                         | Edit `.env` in nano              |
