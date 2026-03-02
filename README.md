@@ -3,12 +3,6 @@
 </p>
 
 <p align="center">
-  <h2>Cipi</h2>
-  <strong>Easy Laravel Deployments</strong><br>
-  The open-source deploy CLI exclusively for Laravel.
-</p>
-
-<p align="center">
   <a href="#install">Install</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#features">Features</a> •
@@ -25,6 +19,11 @@
 </p>
 
 ---
+
+## Cipi
+
+<strong>Easy Laravel Deployments</strong><br>
+The open-source deploy CLI exclusively for Laravel.
 
 One command installs a complete production stack. One command creates an isolated Laravel app with its own database, Redis, queue workers, SSL, and zero-downtime deploys. No web panel, no bloat — just SSH and `cipi`.
 
@@ -694,7 +693,7 @@ Cipi v4 uses MariaDB instead of MySQL:
 | Webhooks    | Not available           | GitHub/GitLab/Bitbucket/Gitea via cipi/agent          |
 | Auto-update | Reinstall               | `cipi self-update` with migrations                    |
 | Scheduler   | Manual setup            | Automatic for every app                               |
-| PHP         | Multi-version           | Multi-version (confirmed)                             |
+| PHP         | Multi-version           | Multi-version                                         |
 | Isolation   | Separate users          | Users + FPM pools + open_basedir + separate Redis DBs |
 | SSL         | Let's Encrypt           | Let's Encrypt with SAN for aliases                    |
 | Backup      | Not available           | S3 automated                                          |
