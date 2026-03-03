@@ -83,7 +83,8 @@ install_basics() {
         software-properties-common curl wget nano vim git \
         zip unzip openssl expect apt-transport-https \
         ca-certificates gnupg lsb-release jq bc acl \
-        logrotate cron htop ncdu
+        logrotate cron htop ncdu \
+        unattended-upgrades apt-listchanges
 
     echo -e "${GREEN}✓ Base packages${NC}"
 }
@@ -560,14 +561,48 @@ setup_cron() {
 
     mkdir -p /var/log/cipi
 
+    # Configure unattended-upgrades: security patches only,
+    # never auto-upgrade nginx / mariadb / php (managed by cipi)
+    cat > /etc/apt/apt.conf.d/50cipi-unattended-upgrades <<'UUEOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+Unattended-Upgrade::Package-Blacklist {
+    "nginx";
+    "nginx-core";
+    "nginx-full";
+    "nginx-extras";
+    "mariadb-server";
+    "mariadb-client";
+    "mariadb-common";
+    "php.*";
+    "libphp.*";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+Dpkg::Options {
+    "--force-confdef";
+    "--force-confold";
+};
+UUEOF
+
+    # Enable periodic security updates
+    cat > /etc/apt/apt.conf.d/20cipi-auto-upgrades <<'AUEOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+AUEOF
+
     (crontab -l 2>/dev/null | grep -v "CIPI"; cat <<'CRONEOF'
 # === CIPI CRON JOBS ===
 # SSL renewal (Sunday 4 AM)
 10 4 * * 0 certbot renew --nginx --non-interactive --post-hook "systemctl reload nginx" >> /var/log/cipi/certbot.log 2>&1
-# System updates (Sunday 4:30 AM)
-30 4 * * 0 apt-get -y update >> /var/log/cipi/updates.log 2>&1
-40 4 * * 0 DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade >> /var/log/cipi/updates.log 2>&1
-# Clean apt cache (Sunday 5 AM)
+# Security updates — unattended-upgrades handles this daily via APT::Periodic
+# Weekly apt cache cleanup (Sunday 5 AM)
 0 5 * * 0 apt-get clean && apt-get autoclean >> /var/log/cipi/updates.log 2>&1
 # Clear RAM cache (daily 5:50 AM)
 50 5 * * * echo 3 > /proc/sys/vm/drop_caches && swapoff -a && swapon -a 2>/dev/null
