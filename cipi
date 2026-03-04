@@ -101,7 +101,9 @@ show_help() {
     echo -e "    ${CYAN}cipi firewall allow <port>${NC}          Allow port"
     echo -e "    ${CYAN}cipi firewall list${NC}                  Firewall rules"
     echo -e "    ${CYAN}cipi backup configure${NC}               Configure S3"
-    echo -e "    ${CYAN}cipi backup run [app]${NC}                Run backup"
+    echo -e "    ${CYAN}cipi backup run [app]${NC}               Run backup"
+    echo -e "    ${CYAN}cipi backup list [app]${NC}              List S3 backups"
+    echo -e "    ${CYAN}cipi backup prune [app] --weeks=N${NC}   Delete backups older than N weeks"
 }
 
 show_status() {

@@ -30,6 +30,15 @@ cipi deploy <app>
 cipi ssl install <app>
 ```
 
+## Backup
+
+```bash
+cipi backup configure            # configure S3 credentials
+cipi backup run [app]            # backup DB + shared/ to S3
+cipi backup list [app]           # list S3 backups
+cipi backup prune [app] --weeks=N  # delete backups older than N weeks
+```
+
 ## License
 
 MIT — made with ❤️ for Laravel developers by [Andrea Pollastri](https://web.ap.it)
