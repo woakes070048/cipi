@@ -81,6 +81,7 @@ _api_ensure_laravel_app() {
         if [[ -d "${overlay_dir}/overlay" ]]; then
             cp -r "${overlay_dir}/overlay/"* /tmp/cipi-api-build/
         fi
+        (cd /tmp/cipi-api-build && composer dump-autoload 2>/dev/null) || true
         (cd /tmp/cipi-api-build && php artisan key:generate --force 2>/dev/null) || true
         (cd /tmp/cipi-api-build && php artisan migrate --force 2>/dev/null) || true
         (cd /tmp/cipi-api-build && php artisan db:seed --class=ApiUserSeeder --force 2>/dev/null) || true
