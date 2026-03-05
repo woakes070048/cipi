@@ -4,6 +4,15 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.0.3] — 2026-03-05
+
+### Fixed
+
+- `cipi app logs` now includes Laravel daily logs (`laravel-YYYY-MM-DD.log`) from `shared/storage/logs/`
+- Added `--type=laravel` option to tail only Laravel application logs
+
+---
+
 ## [4.0.2] — 2026-03-04
 
 ### Added
@@ -52,7 +61,7 @@ Complete rewrite of the Cipi CLI from the ground up.
 - `cipi self-update [--check]` — update Cipi in place; `--check` shows available version without installing
 - `cipi app artisan <app> <cmd>` — run arbitrary Artisan commands
 - `cipi app tinker <app>` — open Laravel Tinker for an app
-- `cipi app logs <app> [--type=nginx|php|worker|deploy|all]` — tail app logs by type
+- `cipi app logs <app> [--type=nginx|php|worker|deploy|laravel|all]` — tail app logs by type
 - PHP 8.4 and 8.5 support
 - `lib/cipi-worker` — standalone helper script for queue worker management via sudoers
 - Nginx security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`) in generated vhosts

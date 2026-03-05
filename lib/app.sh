@@ -325,15 +325,17 @@ app_env() {
 
 app_logs() {
     local app="${1:-}"; shift||true
-    [[ -z "$app" ]] && { error "Usage: cipi app logs <app> [--type=nginx|php|worker|deploy|all]"; exit 1; }
+    [[ -z "$app" ]] && { error "Usage: cipi app logs <app> [--type=nginx|php|worker|deploy|laravel|all]"; exit 1; }
     app_exists "$app" || { error "Not found"; exit 1; }
     parse_args "$@"
+    local laravel_dir="/home/${app}/shared/storage/logs"
     case "${ARG_type:-all}" in
-        nginx)  tail -f "/home/${app}/logs/nginx-"*.log ;;
-        php)    tail -f "/home/${app}/logs/php-fpm-"*.log ;;
-        worker) tail -f "/home/${app}/logs/worker-"*.log ;;
-        deploy) tail -f "/home/${app}/logs/deploy.log" ;;
-        all)    tail -f "/home/${app}/logs/"*.log ;;
+        nginx)   tail -f "/home/${app}/logs/nginx-"*.log ;;
+        php)     tail -f "/home/${app}/logs/php-fpm-"*.log ;;
+        worker)  tail -f "/home/${app}/logs/worker-"*.log ;;
+        deploy)  tail -f "/home/${app}/logs/deploy.log" ;;
+        laravel) tail -f "${laravel_dir}/"*.log ;;
+        all)     tail -f "/home/${app}/logs/"*.log "${laravel_dir}/"*.log ;;
     esac
 }
 
