@@ -116,6 +116,15 @@ show_help() {
     echo -e "    ${CYAN}cipi git remove-github${NC}               Remove GitHub token"
     echo -e "    ${CYAN}cipi git remove-gitlab${NC}               Remove GitLab token + URL"
     echo ""
+    echo -e "  ${BOLD}${CYAN}SYNC${NC}"
+    echo -e "    ${CYAN}cipi sync export [app ...] [opts]${NC}  Export apps to archive"
+    echo -e "    ${CYAN}cipi sync import <file> [app ...]${NC}  Import apps from archive"
+    echo -e "    ${CYAN}cipi sync push [app ...] [opts]${NC}    Export + transfer to remote server"
+    echo -e "    ${CYAN}cipi sync list <file>${NC}              Inspect archive contents"
+    echo -e "    ${DIM}  export flags: --with-db --with-storage --output=<path>${NC}"
+    echo -e "    ${DIM}  push flags:   --host=IP --port=22 --with-db --with-storage --import${NC}"
+    echo -e "    ${DIM}  import flags: --deploy --yes${NC}"
+    echo ""
     echo -e "  ${BOLD}${CYAN}SSL / PHP / FIREWALL / BACKUP${NC}"
     echo -e "    ${CYAN}cipi ssl install <app>${NC}              SSL certificate"
     echo -e "    ${CYAN}cipi ssl renew${NC}                      Renew all certs"
@@ -195,6 +204,7 @@ main() {
         service)    require_root; source "${CIPI_LIB}/service.sh";    service_command "$@" ;;
         api)        require_root; source "${CIPI_LIB}/api.sh";       api_command "$@" ;;
         git)        require_root; source "${CIPI_LIB}/git.sh";       git_command "$@" ;;
+        sync)       require_root; source "${CIPI_LIB}/sync.sh";      sync_command "$@" ;;
         *) error "Unknown command: $cmd"; echo "Run 'cipi help'"; exit 1 ;;
     esac
 }

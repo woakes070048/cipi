@@ -4,6 +4,21 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.0.9] — 2026-03-06
+
+### Added
+
+- **Sync: export/import/list** — transfer apps between CIPI servers
+- **`cipi sync export [app ...] [--with-db] [--with-storage]`** — export all apps or specific ones to a portable `.tar.gz` archive including configs, SSH keys, deployer config, supervisor workers, and optionally database dumps and shared storage
+- **`cipi sync import <file> [app ...] [--deploy] [--yes]`** — import apps from an archive into the current server; recreates users, databases (with new credentials), nginx vhosts, PHP-FPM pools, supervisor workers, crontabs, and deployer configs; selectively import specific apps from a multi-app archive
+- **`cipi sync push [app ...] [--host=IP] [--port=22] [--with-db] [--with-storage] [--import]`** — export, transfer via rsync/scp to a remote server, and optionally run import on the remote; interactive prompts for SSH host/port with connectivity test and remote Cipi version check
+- **`cipi sync list <file>`** — inspect archive contents without importing (apps, PHP versions, DB/storage inclusion)
+- Pre-flight checks on import: warns about missing PHP versions, blocks import of apps that already exist; **domain conflict check** — blocks import if domain or alias is already used by another app on target or by another app in the same import batch
+- `.env` DB credentials automatically updated on import with the new server's values
+- SSH deploy keys preserved from source (same key works with git provider)
+
+---
+
 ## [4.0.8] — 2026-03-06
 
 ### Security
