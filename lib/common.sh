@@ -165,3 +165,6 @@ for f in apps.json databases.json; do
     fi
 done
 ensure_apps_json_api_access
+
+# Email notifications (optional) — cipi_notify "Subject" "Body"
+[[ -f "${CIPI_LIB}/smtp.sh" ]] && source "${CIPI_LIB}/smtp.sh"

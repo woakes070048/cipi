@@ -46,6 +46,7 @@ _deploy_run() {
         error "Deploy failed (exit $rc)"
         warn "Rollback: cipi deploy ${app} --rollback"
         log_action "DEPLOY FAIL: $app exit=$rc"
+        cipi_notify "Cipi deploy failed: ${app}" "Deploy exited with code ${rc}. Rollback: cipi deploy ${app} --rollback"
     fi
 }
 

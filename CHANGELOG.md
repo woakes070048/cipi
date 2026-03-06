@@ -13,9 +13,19 @@ All notable changes to Cipi are documented in this file.
 - **`cipi sync import <file> [app ...] [--deploy] [--yes]`** — import apps from an archive into the current server; recreates users, databases (with new credentials), nginx vhosts, PHP-FPM pools, supervisor workers, crontabs, and deployer configs; selectively import specific apps from a multi-app archive
 - **`cipi sync push [app ...] [--host=IP] [--port=22] [--with-db] [--with-storage] [--import]`** — export, transfer via rsync/scp to a remote server, and optionally run import on the remote; interactive prompts for SSH host/port with connectivity test and remote Cipi version check
 - **`cipi sync list <file>`** — inspect archive contents without importing (apps, PHP versions, DB/storage inclusion)
-- Pre-flight checks on import: warns about missing PHP versions, blocks import of apps that already exist; **domain conflict check** — blocks import if domain or alias is already used by another app on target or by another app in the same import batch
+- **`--update` mode for import** — when an app already exists on the target, incrementally syncs .env (preserving local DB credentials), database dump (drop + reimport), shared storage, supervisor workers, deployer config, nginx vhost (alias changes), and PHP version changes; new apps are created as before; `push --import` uses `--update` automatically
+- Pre-flight checks on import: warns about missing PHP versions, blocks import of apps that already exist (unless `--update`); **domain conflict check** — blocks import if domain or alias is already used by another app on target or by another app in the same import batch
 - `.env` DB credentials automatically updated on import with the new server's values
 - SSH deploy keys preserved from source (same key works with git provider)
+- **Email notifications (optional)** — receive alerts when backup or deploy fails
+- **`cipi smtp configure`** — interactive SMTP setup (host, port, user, password, from/to, TLS); supports Gmail, SendGrid, Mailgun, etc.; installs `msmtp` on first use
+- **`cipi smtp status`** — show if notifications are enabled and recipient
+- **`cipi smtp test`** — send a test email
+- **`cipi smtp disable`** / **`cipi smtp enable`** — toggle notifications without losing config
+- **`cipi smtp delete`** — remove SMTP config
+- Notifications sent automatically on: backup errors (per-app or full run), deploy failures, system cron failures (self-update, SSL renewal)
+- `cipi-cron-notify` wrapper — runs system cron jobs and sends email alert on failure
+- Config stored in `/etc/cipi/smtp.json`; `smtp.json` included in sync export for migration
 
 ---
 

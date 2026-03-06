@@ -101,6 +101,7 @@ _bk_run() {
     local dbr; dbr=$(get_db_root_password)
     local ts; ts=$(date +%Y-%m-%d_%H%M%S)
     local tmp="/tmp/cipi-bk-${ts}"; mkdir -p "$tmp"
+    local backup_errors=""
 
     _do_backup() {
         local app="$1"; local d="${tmp}/${app}"; mkdir -p "$d"
@@ -128,16 +129,25 @@ _bk_run() {
             success "  → s3://${bucket}/cipi/${app}/${ts}/"
         fi
 
-        [[ "$ok" == false ]] && warn "  Backup '${app}' completed with errors"
+        if [[ "$ok" == false ]]; then
+            warn "  Backup '${app}' completed with errors"
+            backup_errors="${backup_errors}${backup_errors:+, }${app}"
+        fi
     }
 
     if [[ -n "$target" ]]; then
         app_exists "$target" || { error "Not found"; exit 1; }
         _do_backup "$target"
     else
-        jq -r 'keys[]' "${CIPI_CONFIG}/apps.json" 2>/dev/null | while read -r a; do _do_backup "$a"; done
+        while IFS= read -r a; do
+            [[ -n "$a" ]] && _do_backup "$a"
+        done < <(jq -r 'keys[]' "${CIPI_CONFIG}/apps.json" 2>/dev/null)
     fi
     rm -rf "$tmp"
+
+    if [[ -n "$backup_errors" ]]; then
+        cipi_notify "Cipi backup failed: ${backup_errors}" "Backup completed with errors for: ${backup_errors}. Check logs: /var/log/cipi/cipi.log"
+    fi
     success "Backup complete"
 }
 

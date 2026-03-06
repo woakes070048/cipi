@@ -65,9 +65,10 @@ _sync_export() {
         cp "${CIPI_CONFIG}/databases.json" "${tmp}/config/databases.json"
     fi
 
-    # Optional configs (backup, api)
+    # Optional configs (backup, api, smtp)
     [[ -f "${CIPI_CONFIG}/backup.json" ]] && cp "${CIPI_CONFIG}/backup.json" "${tmp}/config/backup.json"
     [[ -f "${CIPI_CONFIG}/api.json" ]]    && cp "${CIPI_CONFIG}/api.json" "${tmp}/config/api.json"
+    [[ -f "${CIPI_CONFIG}/smtp.json" ]]   && cp "${CIPI_CONFIG}/smtp.json" "${tmp}/config/smtp.json"
     [[ -f "${CIPI_CONFIG}/version" ]]     && cp "${CIPI_CONFIG}/version" "${tmp}/config/version"
     success "Config files"
 
@@ -236,12 +237,13 @@ _sync_list() {
 # ── IMPORT ────────────────────────────────────────────────────
 
 _sync_import() {
-    local file="" run_deploy="${ARG_deploy:-false}" skip_confirm="${ARG_yes:-false}"
+    local file=""
     local -a selected_apps=()
 
     parse_args "$@"
-    run_deploy="${ARG_deploy:-false}"
-    skip_confirm="${ARG_yes:-false}"
+    local run_deploy="${ARG_deploy:-false}"
+    local skip_confirm="${ARG_yes:-false}"
+    local update_mode="${ARG_update:-false}"
 
     for arg in "$@"; do
         [[ "$arg" == --* ]] && continue
@@ -252,7 +254,7 @@ _sync_import() {
         fi
     done
 
-    [[ -z "$file" ]] && { error "Usage: cipi sync import <archive.tar.gz> [app1 app2 ...] [--deploy] [--yes]"; exit 1; }
+    [[ -z "$file" ]] && { error "Usage: cipi sync import <archive.tar.gz> [app1 ...] [--update] [--deploy] [--yes]"; exit 1; }
     [[ ! -f "$file" ]] && { error "File not found: $file"; exit 1; }
 
     # Extract archive
@@ -280,42 +282,54 @@ _sync_import() {
         mapfile -t apps < <(jq -r 'keys[]' "${dir}/config/apps.json")
     fi
 
+    local mode_label="Import"
+    [[ "$update_mode" == "true" ]] && mode_label="Import/Update"
+
     echo ""
-    echo -e "${BOLD}Cipi Sync Import${NC}"
+    echo -e "${BOLD}Cipi Sync ${mode_label}${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "  Source:  ${CYAN}${src_host} (${src_ip}) — Cipi v${src_ver}${NC}"
     echo -e "  Target:  ${CYAN}$(hostname) — Cipi v${CIPI_VERSION}${NC}"
     echo -e "  Apps:    ${CYAN}${#apps[@]}${NC} (${apps[*]})"
+    [[ "$update_mode" == "true" ]] && echo -e "  Mode:    ${CYAN}update existing + import new${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Pre-flight checks
-    local -a warnings=() blocked=() domain_conflict_msgs=()
+    local -a warnings=() blocked=() existing=() new_apps=() domain_conflict_msgs=()
     for app in "${apps[@]}"; do
         local php_ver; php_ver=$(jq -r --arg a "$app" '.[$a].php' "${dir}/config/apps.json")
         if ! php_is_installed "$php_ver" 2>/dev/null; then
             warnings+=("  ${YELLOW}!${NC} '${app}' needs PHP ${php_ver} — not installed (run: cipi php install ${php_ver})")
         fi
-        if app_exists "$app" 2>/dev/null; then
-            blocked+=("$app")
-        fi
-        if id "$app" &>/dev/null 2>&1; then
-            [[ ! " ${blocked[*]} " =~ " ${app} " ]] && blocked+=("$app")
+
+        local app_is_existing=false
+        if app_exists "$app" 2>/dev/null || id "$app" &>/dev/null 2>&1; then
+            app_is_existing=true
         fi
 
-        # Domain conflict check: domain and aliases vs target server + other apps in this batch
-        local dom aliases_arr
+        if [[ "$app_is_existing" == "true" ]]; then
+            if [[ "$update_mode" == "true" ]]; then
+                existing+=("$app")
+            else
+                blocked+=("$app")
+            fi
+        else
+            new_apps+=("$app")
+        fi
+
+        # Domain conflict check (exclude self when updating)
+        local dom aliases_arr exclude_self=""
+        [[ "$app_is_existing" == "true" && "$update_mode" == "true" ]] && exclude_self="$app"
         dom=$(jq -r --arg a "$app" '.[$a].domain' "${dir}/config/apps.json")
         mapfile -t aliases_arr < <(jq -r --arg a "$app" '.[$a].aliases // [] | .[]' "${dir}/config/apps.json")
         local -a to_check=("$dom")
         to_check+=("${aliases_arr[@]}")
         for d in "${to_check[@]}"; do
             [[ -z "$d" ]] && continue
-            # Check against apps already on target
-            if domain_is_used_by_other_app "$d" "" 2>/dev/null; then
+            if domain_is_used_by_other_app "$d" "$exclude_self" 2>/dev/null; then
                 domain_conflict_msgs+=("  ${RED}✗${NC} '${app}' domain ${CYAN}${d}${NC} already used by app '${DOMAIN_USED_BY_APP}'")
                 [[ ! " ${blocked[*]} " =~ " ${app} " ]] && blocked+=("$app")
             fi
-            # Check against other apps in this import batch
             for other in "${apps[@]}"; do
                 [[ "$other" == "$app" ]] && continue
                 local other_dom other_aliases
@@ -331,52 +345,58 @@ _sync_import() {
 
     if [[ ${#blocked[@]} -gt 0 ]]; then
         echo ""
-        for dc in "${domain_conflict_msgs[@]}"; do
-            echo -e "$dc"
-        done
+        for dc in "${domain_conflict_msgs[@]}"; do echo -e "$dc"; done
         for b in "${blocked[@]}"; do
-            # Only print "already exists" if not covered by a domain conflict message
             if [[ ! " ${domain_conflict_msgs[*]} " =~ "'${b}'" ]]; then
                 echo -e "  ${RED}✗${NC} '${b}' already exists on this server"
             fi
         done
         echo ""
-        error "Cannot import: app(s) already exist or domain conflict. Delete existing apps or exclude from import."
-        echo -e "  ${DIM}Exclude: cipi sync import ${file} $(printf '%s ' "${apps[@]}" | sed "s/$(printf '%s ' "${blocked[@]}")//g")${NC}"
+        if [[ "$update_mode" != "true" ]]; then
+            error "Cannot import: app(s) already exist or domain conflict."
+            echo -e "  ${DIM}Use --update to update existing apps, or exclude them:${NC}"
+        else
+            error "Cannot import: domain conflict(s) detected."
+        fi
+        echo -e "  ${DIM}cipi sync import ${file} $(printf '%s ' "${apps[@]}" | sed "s/$(printf '%s ' "${blocked[@]}")//g")${NC}"
         rm -rf "$tmp"; exit 1
+    fi
+
+    if [[ ${#existing[@]} -gt 0 ]]; then
+        echo ""
+        for e in "${existing[@]}"; do
+            echo -e "  ${YELLOW}↻${NC} '${e}' exists — will be ${BOLD}updated${NC}"
+        done
+    fi
+    if [[ ${#new_apps[@]} -gt 0 ]]; then
+        echo ""
+        for n in "${new_apps[@]}"; do
+            echo -e "  ${GREEN}+${NC} '${n}' — will be ${BOLD}created${NC}"
+        done
     fi
 
     if [[ ${#warnings[@]} -gt 0 ]]; then
         echo ""
         for w in "${warnings[@]}"; do echo -e "$w"; done
-        echo ""
-        if [[ "$skip_confirm" != "true" ]]; then
-            confirm "Continue with warnings?" || { rm -rf "$tmp"; exit 0; }
-        fi
     fi
 
     if [[ "$skip_confirm" != "true" ]]; then
         echo ""
-        confirm "Import ${#apps[@]} app(s) into this server?" || { info "Cancelled"; rm -rf "$tmp"; exit 0; }
+        confirm "${mode_label} ${#apps[@]} app(s)?" || { info "Cancelled"; rm -rf "$tmp"; exit 0; }
     fi
 
     echo ""
     local dbr; dbr=$(get_db_root_password)
-    local -a imported=() failed=()
+    local -a imported=() updated=() failed=()
     source "${CIPI_LIB}/app.sh"
 
     for app in "${apps[@]}"; do
-        echo -e "\n${BOLD}Importing '${app}'...${NC}"
-        echo "────────────────────────────────────────────────"
         local ad="${dir}/apps/${app}"
-        local php_ver domain branch repository aliases webhook_token created_at
+        local php_ver domain branch repository
         php_ver=$(jq -r --arg a "$app" '.[$a].php' "${dir}/config/apps.json")
         domain=$(jq -r --arg a "$app" '.[$a].domain' "${dir}/config/apps.json")
         branch=$(jq -r --arg a "$app" '.[$a].branch // "main"' "${dir}/config/apps.json")
         repository=$(jq -r --arg a "$app" '.[$a].repository' "${dir}/config/apps.json")
-        aliases=$(jq -r --arg a "$app" '.[$a].aliases // [] | join(" ")' "${dir}/config/apps.json")
-        webhook_token=$(jq -r --arg a "$app" '.[$a].webhook_token' "${dir}/config/apps.json")
-        created_at=$(jq -r --arg a "$app" '.[$a].created_at' "${dir}/config/apps.json")
         local home="/home/${app}"
 
         if ! php_is_installed "$php_ver" 2>/dev/null; then
@@ -385,19 +405,61 @@ _sync_import() {
             continue
         fi
 
-        # 1. Linux user
-        step "User..."
-        local user_pass; user_pass=$(generate_password 32)
-        useradd -m -s /bin/bash -G www-data "$app"
-        echo "${app}:${user_pass}" | chpasswd
-        chmod 750 "$home"
-        usermod -aG "$app" www-data
-        success "User (password: ${user_pass})"
+        # Route: update existing or create new
+        if [[ " ${existing[*]} " =~ " ${app} " ]]; then
+            _sync_update_app "$app" "$ad" "$dir" "$php_ver" "$domain" "$branch" "$repository" "$dbr" "$run_deploy"
+            updated+=("$app")
+        else
+            _sync_create_app "$app" "$ad" "$dir" "$php_ver" "$domain" "$branch" "$repository" "$dbr" "$run_deploy"
+            imported+=("$app")
+        fi
+    done
 
-        # 2. Directories
-        step "Directories..."
-        mkdir -p "${home}"/{shared/storage/{app/public,framework/{cache/data,sessions,views},logs},logs,.ssh,.deployer}
-        cat > "${home}/.bashrc" <<BASH
+    rm -rf "$tmp"
+
+    # Summary
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "  ${GREEN}${BOLD}${mode_label^^} COMPLETE${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    [[ ${#imported[@]} -gt 0 ]] && echo -e "  Created: ${CYAN}${#imported[@]}${NC} (${imported[*]})"
+    [[ ${#updated[@]} -gt 0 ]] && echo -e "  Updated: ${CYAN}${#updated[@]}${NC} (${updated[*]})"
+    [[ ${#failed[@]} -gt 0 ]]  && echo -e "  Failed:  ${RED}${#failed[@]}${NC} (${failed[*]})"
+    echo ""
+    if [[ "$run_deploy" != "true" && ${#imported[@]} -gt 0 ]]; then
+        echo -e "  ${BOLD}Next steps for new apps:${NC}"
+        for a in "${imported[@]}"; do
+            echo -e "    ${CYAN}cipi deploy ${a}${NC}"
+        done
+        echo -e "    ${CYAN}cipi ssl install <app>${NC}  (for each app)"
+    fi
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    log_action "SYNC IMPORT: created=${#imported[@]} (${imported[*]}) updated=${#updated[@]} (${updated[*]}) from ${src_host} (${src_ip})"
+}
+
+# ── CREATE APP (fresh import) ─────────────────────────────────
+
+_sync_create_app() {
+    local app="$1" ad="$2" dir="$3" php_ver="$4" domain="$5" branch="$6" repository="$7" dbr="$8" run_deploy="$9"
+    local home="/home/${app}"
+
+    echo -e "\n${BOLD}Creating '${app}'...${NC}"
+    echo "────────────────────────────────────────────────"
+
+    # 1. Linux user
+    step "User..."
+    local user_pass; user_pass=$(generate_password 32)
+    useradd -m -s /bin/bash -G www-data "$app"
+    echo "${app}:${user_pass}" | chpasswd
+    chmod 750 "$home"
+    usermod -aG "$app" www-data
+    success "User"
+
+    # 2. Directories
+    step "Directories..."
+    mkdir -p "${home}"/{shared/storage/{app/public,framework/{cache/data,sessions,views},logs},logs,.ssh,.deployer}
+    cat > "${home}/.bashrc" <<BASH
 export PATH="/usr/local/bin:\$PATH"
 alias php='/usr/bin/php${php_ver}'
 alias artisan='php ${home}/current/artisan'
@@ -406,31 +468,30 @@ alias tinker='artisan tinker'
 alias deploy='dep deploy -f ${home}/.deployer/deploy.php'
 PS1='\[\033[0;32m\]\u\[\033[0m\]@\h:\[\033[0;34m\]\w\[\033[0m\]\$ '
 BASH
-        success "Directories"
+    success "Directories"
 
-        # 3. SSH keys (restore from archive)
-        step "SSH keys..."
-        if [[ -d "${ad}/ssh" ]]; then
-            for f in id_ed25519 id_ed25519.pub known_hosts config authorized_keys; do
-                [[ -f "${ad}/ssh/${f}" ]] && cp "${ad}/ssh/${f}" "${home}/.ssh/${f}"
-            done
-            chmod 700 "${home}/.ssh"
-            chmod 600 "${home}/.ssh/"* 2>/dev/null || true
-            # Re-scan localhost for the new server
-            ssh-keyscan -H localhost 127.0.0.1 2>/dev/null >> "${home}/.ssh/known_hosts"
-            success "SSH keys (restored from source)"
-        else
-            sudo -u "$app" ssh-keygen -t ed25519 -C "${app}@cipi" -f "${home}/.ssh/id_ed25519" -N "" -q
-            cat "${home}/.ssh/id_ed25519.pub" >> "${home}/.ssh/authorized_keys"
-            ssh-keyscan -H localhost 127.0.0.1 github.com gitlab.com 2>/dev/null >> "${home}/.ssh/known_hosts"
-            chmod 600 "${home}/.ssh/authorized_keys" "${home}/.ssh/known_hosts"
-            warn "SSH keys (generated new — update deploy key on git provider)"
-        fi
+    # 3. SSH keys
+    step "SSH keys..."
+    if [[ -d "${ad}/ssh" ]]; then
+        for f in id_ed25519 id_ed25519.pub known_hosts config authorized_keys; do
+            [[ -f "${ad}/ssh/${f}" ]] && cp "${ad}/ssh/${f}" "${home}/.ssh/${f}"
+        done
+        chmod 700 "${home}/.ssh"
+        chmod 600 "${home}/.ssh/"* 2>/dev/null || true
+        ssh-keyscan -H localhost 127.0.0.1 2>/dev/null >> "${home}/.ssh/known_hosts"
+        success "SSH keys (restored from source)"
+    else
+        sudo -u "$app" ssh-keygen -t ed25519 -C "${app}@cipi" -f "${home}/.ssh/id_ed25519" -N "" -q
+        cat "${home}/.ssh/id_ed25519.pub" >> "${home}/.ssh/authorized_keys"
+        ssh-keyscan -H localhost 127.0.0.1 github.com gitlab.com 2>/dev/null >> "${home}/.ssh/known_hosts"
+        chmod 600 "${home}/.ssh/authorized_keys" "${home}/.ssh/known_hosts"
+        warn "SSH keys (generated new — update deploy key on git provider)"
+    fi
 
-        # 4. Database
-        step "Database..."
-        local db_pass; db_pass=$(generate_password 24)
-        mariadb -u root -p"$dbr" <<SQL
+    # 4. Database
+    step "Database..."
+    local db_pass; db_pass=$(generate_password 24)
+    mariadb -u root -p"$dbr" <<SQL
 CREATE DATABASE IF NOT EXISTS \`${app}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${app}'@'localhost' IDENTIFIED BY '${db_pass}';
 CREATE USER IF NOT EXISTS '${app}'@'127.0.0.1' IDENTIFIED BY '${db_pass}';
@@ -438,149 +499,241 @@ GRANT ALL PRIVILEGES ON \`${app}\`.* TO '${app}'@'localhost';
 GRANT ALL PRIVILEGES ON \`${app}\`.* TO '${app}'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
-        success "Database (new credentials)"
+    success "Database (new credentials)"
 
-        # 5. Import DB dump if present
-        if [[ -f "${ad}/db.sql.gz" ]]; then
-            step "Restoring database..."
-            if gunzip -c "${ad}/db.sql.gz" | mariadb -u root -p"$dbr" "$app" 2>/dev/null; then
-                success "Database data restored"
-            else
-                warn "Database restore had issues (empty DB created)"
-            fi
-        fi
-
-        # 6. .env (restore and update DB credentials)
-        step ".env..."
-        if [[ -f "${ad}/env" ]]; then
-            cp "${ad}/env" "${home}/shared/.env"
-            # Update DB credentials to new server's values
-            sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=${db_pass}|" "${home}/shared/.env"
-            sed -i "s|^DB_USERNAME=.*|DB_USERNAME=${app}|" "${home}/shared/.env"
-            sed -i "s|^DB_DATABASE=.*|DB_DATABASE=${app}|" "${home}/shared/.env"
-            sed -i "s|^DB_HOST=.*|DB_HOST=127.0.0.1|" "${home}/shared/.env"
-            success ".env (restored, DB credentials updated)"
+    # 5. DB dump
+    if [[ -f "${ad}/db.sql.gz" ]]; then
+        step "Restoring database..."
+        if gunzip -c "${ad}/db.sql.gz" | mariadb -u root -p"$dbr" "$app" 2>/dev/null; then
+            success "Database data restored"
         else
-            warn "No .env in archive — app will need manual .env configuration"
+            warn "Database restore had issues"
         fi
+    fi
 
-        # 7. auth.json
-        if [[ -f "${ad}/auth.json" ]]; then
-            cp "${ad}/auth.json" "${home}/shared/auth.json"
-            success "auth.json restored"
-        fi
+    # 6. .env
+    step ".env..."
+    if [[ -f "${ad}/env" ]]; then
+        cp "${ad}/env" "${home}/shared/.env"
+        sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=${db_pass}|" "${home}/shared/.env"
+        sed -i "s|^DB_USERNAME=.*|DB_USERNAME=${app}|" "${home}/shared/.env"
+        sed -i "s|^DB_DATABASE=.*|DB_DATABASE=${app}|" "${home}/shared/.env"
+        sed -i "s|^DB_HOST=.*|DB_HOST=127.0.0.1|" "${home}/shared/.env"
+        success ".env (restored, DB credentials updated)"
+    else
+        warn "No .env in archive"
+    fi
 
-        # 8. Restore shared storage
-        if [[ -f "${ad}/storage.tar.gz" ]]; then
-            step "Shared storage..."
-            tar -xzf "${ad}/storage.tar.gz" -C "${home}/shared/" 2>/dev/null && \
-                success "Storage restored" || warn "Storage restore failed"
-        fi
+    # 7. auth.json
+    [[ -f "${ad}/auth.json" ]] && { cp "${ad}/auth.json" "${home}/shared/auth.json"; success "auth.json"; }
 
-        # 9. Fix ownership (before service configs)
-        chown -R "${app}:${app}" "$home"
+    # 8. Storage
+    if [[ -f "${ad}/storage.tar.gz" ]]; then
+        step "Storage..."
+        tar -xzf "${ad}/storage.tar.gz" -C "${home}/shared/" 2>/dev/null && success "Storage restored" || warn "Storage failed"
+    fi
 
-        # 10. Save to apps.json early (so nginx vhost can read aliases)
-        local app_json; app_json=$(jq --arg a "$app" '.[$a]' "${dir}/config/apps.json")
-        app_save "$app" "$app_json"
+    # 9. Ownership
+    chown -R "${app}:${app}" "$home"
 
-        # 11. PHP-FPM pool
-        step "PHP-FPM pool..."
-        _create_fpm_pool "$app" "$php_ver"
-        reload_php_fpm "$php_ver"
-        success "PHP-FPM ${php_ver}"
+    # 10. apps.json
+    local app_json; app_json=$(jq --arg a "$app" '.[$a]' "${dir}/config/apps.json")
+    app_save "$app" "$app_json"
 
-        # 12. Nginx vhost (reads aliases from apps.json)
-        step "Nginx vhost..."
-        _create_nginx_vhost "$app" "$domain" "$php_ver"
-        ln -sf "/etc/nginx/sites-available/${app}" "/etc/nginx/sites-enabled/${app}"
-        reload_nginx
-        success "Nginx → ${domain}"
+    # 11. PHP-FPM
+    step "PHP-FPM..."
+    _create_fpm_pool "$app" "$php_ver"
+    reload_php_fpm "$php_ver"
+    success "PHP-FPM ${php_ver}"
 
-        # 13. Supervisor workers (restore from archive or create default)
-        step "Workers..."
-        if [[ -f "${ad}/supervisor.conf" ]] && [[ -s "${ad}/supervisor.conf" ]]; then
-            local sup_content; sup_content=$(cat "${ad}/supervisor.conf}")
-            echo "$sup_content" | sed "s|/usr/bin/php[0-9]\.[0-9]|/usr/bin/php${php_ver}|g" \
-                > "/etc/supervisor/conf.d/${app}.conf"
-            success "Workers (restored from source)"
-        else
-            echo "" > "/etc/supervisor/conf.d/${app}.conf"
-            _create_supervisor_worker "$app" "$php_ver" "default"
-            success "Worker (default queue)"
-        fi
-        reload_supervisor
+    # 12. Nginx
+    step "Nginx..."
+    _create_nginx_vhost "$app" "$domain" "$php_ver"
+    ln -sf "/etc/nginx/sites-available/${app}" "/etc/nginx/sites-enabled/${app}"
+    reload_nginx
+    success "Nginx → ${domain}"
 
-        # 14. Crontab
-        step "Crontab..."
-        cat <<CRON | crontab -u "$app" -
+    # 13. Supervisor
+    step "Workers..."
+    if [[ -f "${ad}/supervisor.conf" ]] && [[ -s "${ad}/supervisor.conf" ]]; then
+        sed "s|/usr/bin/php[0-9]\.[0-9]|/usr/bin/php${php_ver}|g" "${ad}/supervisor.conf" \
+            > "/etc/supervisor/conf.d/${app}.conf"
+        success "Workers (restored)"
+    else
+        echo "" > "/etc/supervisor/conf.d/${app}.conf"
+        _create_supervisor_worker "$app" "$php_ver" "default"
+        success "Worker (default)"
+    fi
+    reload_supervisor
+
+    # 14. Crontab
+    step "Crontab..."
+    cat <<CRON | crontab -u "$app" -
 * * * * * /usr/bin/php${php_ver} ${home}/current/artisan schedule:run >> /dev/null 2>&1
 * * * * * test -f ${home}/.deploy-trigger && rm -f ${home}/.deploy-trigger && cd ${home} && /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php >> ${home}/logs/deploy.log 2>&1
 CRON
-        success "Scheduler + deploy trigger"
+    success "Crontab"
 
-        # 15. Deployer config (restore or recreate)
-        step "Deployer..."
-        if [[ -f "${ad}/deploy.php" ]]; then
-            mkdir -p "${home}/.deployer"
-            cp "${ad}/deploy.php" "${home}/.deployer/deploy.php"
-            sed -i "s|set('bin/php', '/usr/bin/php[0-9]\.[0-9]')|set('bin/php', '/usr/bin/php${php_ver}')|" \
-                "${home}/.deployer/deploy.php"
-            chown -R "${app}:${app}" "${home}/.deployer"
-            success "Deployer (restored)"
-        else
-            _create_deployer_config "$app" "$repository" "$branch" "$php_ver"
-            success "Deployer (recreated)"
-        fi
+    # 15. Deployer
+    step "Deployer..."
+    if [[ -f "${ad}/deploy.php" ]]; then
+        mkdir -p "${home}/.deployer"
+        cp "${ad}/deploy.php" "${home}/.deployer/deploy.php"
+        sed -i "s|set('bin/php', '/usr/bin/php[0-9]\.[0-9]')|set('bin/php', '/usr/bin/php${php_ver}')|" \
+            "${home}/.deployer/deploy.php"
+        chown -R "${app}:${app}" "${home}/.deployer"
+        success "Deployer (restored)"
+    else
+        _create_deployer_config "$app" "$repository" "$branch" "$php_ver"
+        success "Deployer (recreated)"
+    fi
 
-        # 16. Sudoers
-        step "Permissions..."
-        cat > "/etc/sudoers.d/cipi-${app}" <<SUDO
+    # 16. Sudoers
+    cat > "/etc/sudoers.d/cipi-${app}" <<SUDO
 ${app} ALL=(root) NOPASSWD: /usr/local/bin/cipi-worker restart ${app}
 ${app} ALL=(root) NOPASSWD: /usr/local/bin/cipi-worker status ${app}
 SUDO
-        chmod 440 "/etc/sudoers.d/cipi-${app}"
-        success "Permissions"
+    chmod 440 "/etc/sudoers.d/cipi-${app}"
 
-        # 18. Deploy if requested
-        if [[ "$run_deploy" == "true" ]]; then
-            step "Deploying..."
-            if sudo -u "$app" bash -c "cd ${home} && /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php" 2>&1; then
-                success "Deploy completed"
-            else
-                warn "Deploy failed — run manually: cipi deploy ${app}"
-            fi
+    # 17. Deploy
+    if [[ "$run_deploy" == "true" ]]; then
+        step "Deploying..."
+        if sudo -u "$app" bash -c "cd ${home} && /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php" 2>&1; then
+            success "Deploy completed"
+        else
+            warn "Deploy failed — run manually: cipi deploy ${app}"
         fi
-
-        imported+=("$app")
-
-        echo ""
-        echo -e "  ${GREEN}${BOLD}✓ '${app}' imported${NC}"
-        echo -e "  SSH password: ${CYAN}${user_pass}${NC}"
-        echo -e "  DB password:  ${CYAN}${db_pass}${NC}"
-        echo -e "  ${YELLOW}⚠ Save these credentials!${NC}"
-    done
-
-    rm -rf "$tmp"
-
-    # Summary
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "  ${GREEN}${BOLD}IMPORT COMPLETE${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "  Imported: ${CYAN}${#imported[@]}${NC} (${imported[*]})"
-    [[ ${#failed[@]} -gt 0 ]] && echo -e "  Failed:   ${RED}${#failed[@]}${NC} (${failed[*]})"
-    echo ""
-    if [[ "$run_deploy" != "true" ]]; then
-        echo -e "  ${BOLD}Next steps:${NC}"
-        for a in "${imported[@]}"; do
-            echo -e "    ${CYAN}cipi deploy ${a}${NC}"
-        done
-        echo -e "    ${CYAN}cipi ssl install <app>${NC}  (for each app)"
     fi
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    log_action "SYNC IMPORT: ${#imported[@]} apps (${imported[*]}) from ${src_host} (${src_ip})"
+    echo ""
+    echo -e "  ${GREEN}${BOLD}✓ '${app}' created${NC}"
+    echo -e "  SSH password: ${CYAN}${user_pass}${NC}"
+    echo -e "  DB password:  ${CYAN}${db_pass}${NC}"
+    echo -e "  ${YELLOW}⚠ Save these credentials!${NC}"
+}
+
+# ── UPDATE APP (incremental sync) ────────────────────────────
+
+_sync_update_app() {
+    local app="$1" ad="$2" dir="$3" php_ver="$4" domain="$5" branch="$6" repository="$7" dbr="$8" run_deploy="$9"
+    local home="/home/${app}"
+
+    echo -e "\n${BOLD}Updating '${app}'...${NC}"
+    echo "────────────────────────────────────────────────"
+
+    local cur_php; cur_php=$(app_get "$app" php)
+
+    # 1. .env — sync from source but preserve local DB credentials
+    if [[ -f "${ad}/env" ]]; then
+        step ".env..."
+        local local_db_pass local_db_user local_db_name local_db_host
+        local_db_pass=$(grep -m1 '^DB_PASSWORD=' "${home}/shared/.env" 2>/dev/null | cut -d= -f2-)
+        local_db_user=$(grep -m1 '^DB_USERNAME=' "${home}/shared/.env" 2>/dev/null | cut -d= -f2-)
+        local_db_name=$(grep -m1 '^DB_DATABASE=' "${home}/shared/.env" 2>/dev/null | cut -d= -f2-)
+        local_db_host=$(grep -m1 '^DB_HOST=' "${home}/shared/.env" 2>/dev/null | cut -d= -f2-)
+        cp "${ad}/env" "${home}/shared/.env"
+        # Re-apply local DB credentials
+        [[ -n "$local_db_pass" ]] && sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=${local_db_pass}|" "${home}/shared/.env"
+        [[ -n "$local_db_user" ]] && sed -i "s|^DB_USERNAME=.*|DB_USERNAME=${local_db_user}|" "${home}/shared/.env"
+        [[ -n "$local_db_name" ]] && sed -i "s|^DB_DATABASE=.*|DB_DATABASE=${local_db_name}|" "${home}/shared/.env"
+        [[ -n "$local_db_host" ]] && sed -i "s|^DB_HOST=.*|DB_HOST=${local_db_host}|" "${home}/shared/.env"
+        chown "${app}:${app}" "${home}/shared/.env"
+        chmod 640 "${home}/shared/.env"
+        success ".env (synced, local DB credentials preserved)"
+    fi
+
+    # 2. auth.json
+    if [[ -f "${ad}/auth.json" ]]; then
+        cp "${ad}/auth.json" "${home}/shared/auth.json"
+        chown "${app}:${app}" "${home}/shared/auth.json"
+        chmod 640 "${home}/shared/auth.json"
+        success "auth.json synced"
+    fi
+
+    # 3. DB dump — drop and reimport
+    if [[ -f "${ad}/db.sql.gz" ]]; then
+        step "Database sync..."
+        mariadb -u root -p"$dbr" -e "
+            SET FOREIGN_KEY_CHECKS=0;
+            SELECT CONCAT('DROP TABLE IF EXISTS \`',table_name,'\`;') FROM information_schema.tables
+            WHERE table_schema='${app}'" 2>/dev/null | grep -v CONCAT | mariadb -u root -p"$dbr" "$app" 2>/dev/null
+        if gunzip -c "${ad}/db.sql.gz" | mariadb -u root -p"$dbr" "$app" 2>/dev/null; then
+            success "Database data synced"
+        else
+            warn "Database sync had issues"
+        fi
+    fi
+
+    # 4. Storage
+    if [[ -f "${ad}/storage.tar.gz" ]]; then
+        step "Storage sync..."
+        tar -xzf "${ad}/storage.tar.gz" -C "${home}/shared/" 2>/dev/null && \
+            success "Storage synced" || warn "Storage sync failed"
+        chown -R "${app}:${app}" "${home}/shared/storage"
+    fi
+
+    # 5. PHP version change
+    if [[ "$php_ver" != "$cur_php" ]]; then
+        step "PHP ${cur_php} → ${php_ver}..."
+        rm -f "/etc/php/${cur_php}/fpm/pool.d/${app}.conf"
+        _create_fpm_pool "$app" "$php_ver"
+        reload_php_fpm "$cur_php" 2>/dev/null || true
+        reload_php_fpm "$php_ver"
+        sed -i "s|/usr/bin/php[0-9]\.[0-9]|/usr/bin/php${php_ver}|g" "/etc/supervisor/conf.d/${app}.conf" 2>/dev/null
+        reload_supervisor
+        crontab -u "$app" -l 2>/dev/null | sed "s|php${cur_php}|php${php_ver}|g" | crontab -u "$app" -
+        sed -i "s|php${cur_php}|php${php_ver}|g" "${home}/.bashrc" 2>/dev/null
+        sed -i "s|set('bin/php', '/usr/bin/php[0-9]\.[0-9]')|set('bin/php', '/usr/bin/php${php_ver}')|" \
+            "${home}/.deployer/deploy.php" 2>/dev/null
+        sed -i "s|^CIPI_PHP_VERSION=.*|CIPI_PHP_VERSION=${php_ver}|" "${home}/shared/.env" 2>/dev/null
+        success "PHP → ${php_ver}"
+    fi
+
+    # 6. Update apps.json (aliases, branch, repository, etc.)
+    local app_json; app_json=$(jq --arg a "$app" '.[$a]' "${dir}/config/apps.json")
+    app_save "$app" "$app_json"
+
+    # 7. Regenerate nginx vhost (picks up alias changes)
+    step "Nginx..."
+    _create_nginx_vhost "$app" "$domain" "$php_ver"
+    ln -sf "/etc/nginx/sites-available/${app}" "/etc/nginx/sites-enabled/${app}"
+    reload_nginx
+    success "Nginx → ${domain}"
+
+    # 8. Supervisor (restore if changed)
+    if [[ -f "${ad}/supervisor.conf" ]] && [[ -s "${ad}/supervisor.conf" ]]; then
+        step "Workers..."
+        sed "s|/usr/bin/php[0-9]\.[0-9]|/usr/bin/php${php_ver}|g" "${ad}/supervisor.conf" \
+            > "/etc/supervisor/conf.d/${app}.conf"
+        reload_supervisor
+        success "Workers synced"
+    fi
+
+    # 9. Deployer config
+    if [[ -f "${ad}/deploy.php" ]]; then
+        step "Deployer..."
+        cp "${ad}/deploy.php" "${home}/.deployer/deploy.php"
+        sed -i "s|set('bin/php', '/usr/bin/php[0-9]\.[0-9]')|set('bin/php', '/usr/bin/php${php_ver}')|" \
+            "${home}/.deployer/deploy.php"
+        chown -R "${app}:${app}" "${home}/.deployer"
+        success "Deployer synced"
+    fi
+
+    # 10. Fix ownership
+    chown -R "${app}:${app}" "${home}/shared" "${home}/.deployer" "${home}/.ssh" "${home}/.bashrc" 2>/dev/null
+
+    # 11. Deploy
+    if [[ "$run_deploy" == "true" ]]; then
+        step "Deploying..."
+        if sudo -u "$app" bash -c "cd ${home} && /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php" 2>&1; then
+            success "Deploy completed"
+        else
+            warn "Deploy failed — run manually: cipi deploy ${app}"
+        fi
+    fi
+
+    echo ""
+    echo -e "  ${GREEN}${BOLD}↻ '${app}' updated${NC}"
 }
 
 # ── PUSH (export + transfer + optional remote import) ─────────
@@ -691,7 +844,7 @@ _sync_push() {
         echo ""
         info "Phase 3: Remote Import"
         echo "────────────────────────────────────────────────"
-        local -a remote_cmd=("cipi" "sync" "import" "/tmp/${archive_name}" "--yes")
+        local -a remote_cmd=("cipi" "sync" "import" "/tmp/${archive_name}" "--yes" "--update")
         [[ ${#app_args[@]} -gt 0 ]] && remote_cmd+=("${app_args[@]}")
 
         step "Running: ${remote_cmd[*]}"

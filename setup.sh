@@ -579,13 +579,17 @@ install_cipi() {
     fi
 
     # Worker helper
-    cp cipi-install/lib/cipi-worker /usr/local/bin/cipi-worker
+    cp cipi-install/lib/cipi-worker.sh /usr/local/bin/cipi-worker
     chmod 700 /usr/local/bin/cipi-worker
+
+    # Cron notification wrapper
+    cp cipi-install/lib/cipi-cron-notify.sh /usr/local/bin/cipi-cron-notify
+    chmod 700 /usr/local/bin/cipi-cron-notify
 
     # Templates (if any)
     cp cipi-install/templates/* /opt/cipi/templates/ 2>/dev/null || true
 
-    chown -R root:root /usr/local/bin/cipi /usr/local/bin/cipi-worker /opt/cipi
+    chown -R root:root /usr/local/bin/cipi /usr/local/bin/cipi-worker /usr/local/bin/cipi-cron-notify /opt/cipi
 
     # Init config files
     for f in apps.json databases.json; do
@@ -656,9 +660,9 @@ AUEOF
     (crontab -l 2>/dev/null | grep -v "CIPI"; cat <<'CRONEOF'
 # === CIPI CRON JOBS ===
 # Cipi self-update (daily 3:50 AM)
-50 3 * * * /usr/local/bin/cipi self-update >> /var/log/cipi/cipi.log 2>&1
+50 3 * * * /usr/local/bin/cipi-cron-notify self-update /usr/local/bin/cipi self-update >> /var/log/cipi/cipi.log 2>&1
 # SSL renewal (Sunday 4 AM)
-10 4 * * 0 certbot renew --nginx --non-interactive --post-hook "systemctl reload nginx" >> /var/log/cipi/certbot.log 2>&1
+10 4 * * 0 /usr/local/bin/cipi-cron-notify ssl-renew certbot renew --nginx --non-interactive --post-hook "systemctl reload nginx" >> /var/log/cipi/certbot.log 2>&1
 # Security updates — unattended-upgrades handles this daily via APT::Periodic
 # Weekly apt cache cleanup (Sunday 5 AM)
 0 5 * * 0 apt-get clean && apt-get autoclean >> /var/log/cipi/updates.log 2>&1
