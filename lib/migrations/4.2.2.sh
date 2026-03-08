@@ -51,6 +51,20 @@ fi
 echo "Migration 4.2.2 complete"
 
 
-set -e
+# ── Restrict www-data sudoers ─────────────────────────────────
 
-echo "Migration 4.2.3 complete (reset commands added via lib update)"
+echo "Restricting www-data sudoers to API command whitelist..."
+
+cat > /etc/sudoers.d/cipi-api <<'SUDOEOF'
+www-data ALL=(root) NOPASSWD: /usr/local/bin/cipi app create *, \
+                               /usr/local/bin/cipi app edit *, \
+                               /usr/local/bin/cipi app delete *, \
+                               /usr/local/bin/cipi deploy *, \
+                               /usr/local/bin/cipi alias add *, \
+                               /usr/local/bin/cipi alias remove *, \
+                               /usr/local/bin/cipi ssl install *, \
+                               /bin/cat /etc/cipi/apps.json
+SUDOEOF
+chmod 440 /etc/sudoers.d/cipi-api
+
+echo "www-data sudoers restricted to API whitelist"

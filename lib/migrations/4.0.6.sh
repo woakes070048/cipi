@@ -15,9 +15,18 @@ CIPI_API_ROOT="/opt/cipi/api"
 if [[ -f /etc/sudoers.d/cipi-api ]]; then
     echo "API sudoers already present — skip"
 else
-    echo 'www-data ALL=(root) NOPASSWD: /usr/local/bin/cipi *' > /etc/sudoers.d/cipi-api
+    cat > /etc/sudoers.d/cipi-api <<'SUDOEOF'
+www-data ALL=(root) NOPASSWD: /usr/local/bin/cipi app create *, \
+                               /usr/local/bin/cipi app edit *, \
+                               /usr/local/bin/cipi app delete *, \
+                               /usr/local/bin/cipi deploy *, \
+                               /usr/local/bin/cipi alias add *, \
+                               /usr/local/bin/cipi alias remove *, \
+                               /usr/local/bin/cipi ssl install *, \
+                               /bin/cat /etc/cipi/apps.json
+SUDOEOF
     chmod 440 /etc/sudoers.d/cipi-api
-    echo "Added /etc/sudoers.d/cipi-api"
+    echo "Added /etc/sudoers.d/cipi-api (restricted whitelist)"
 fi
 
 # 2. PHP-FPM pool (only if API is already installed)

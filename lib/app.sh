@@ -309,13 +309,15 @@ app_edit() {
     fi
     if [[ -n "${ARG_branch:-}" ]]; then
         app_set "$app" branch "${ARG_branch}"
-        sed -i "s|set('branch', '.*')|set('branch', '${ARG_branch}')|" "/home/${app}/.deployer/deploy.php"
+        local safe_branch; safe_branch=$(printf '%s' "${ARG_branch}" | sed 's/[&|\\\/]/\\&/g')
+        sed -i "s|set('branch', '.*')|set('branch', '${safe_branch}')|" "/home/${app}/.deployer/deploy.php"
         success "Branch → ${ARG_branch}"; changed=true
     fi
     if [[ -n "${ARG_repository:-}" ]]; then
         local old_repo; old_repo=$(app_get "$app" repository)
         app_set "$app" repository "${ARG_repository}"
-        sed -i "s|set('repository', '.*')|set('repository', '${ARG_repository}')|" "/home/${app}/.deployer/deploy.php"
+        local safe_repo; safe_repo=$(printf '%s' "${ARG_repository}" | sed 's/[&|\\\/]/\\&/g')
+        sed -i "s|set('repository', '.*')|set('repository', '${safe_repo}')|" "/home/${app}/.deployer/deploy.php"
 
         # Migrate git provider integration
         source "${CIPI_LIB}/git.sh"

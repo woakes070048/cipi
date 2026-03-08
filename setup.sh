@@ -764,11 +764,18 @@ install_cipi() {
     # Version
     echo "$BUILD" > /etc/cipi/version
 
-    # Sudoers for API (www-data runs cipi via sudo)
-    if [ ! -f /etc/sudoers.d/cipi-api ]; then
-        echo 'www-data ALL=(root) NOPASSWD: /usr/local/bin/cipi *' > /etc/sudoers.d/cipi-api
-        chmod 440 /etc/sudoers.d/cipi-api
-    fi
+    # Sudoers for API (www-data runs cipi via sudo — restricted to API commands only)
+    cat > /etc/sudoers.d/cipi-api <<'SUDOEOF'
+www-data ALL=(root) NOPASSWD: /usr/local/bin/cipi app create *, \
+                               /usr/local/bin/cipi app edit *, \
+                               /usr/local/bin/cipi app delete *, \
+                               /usr/local/bin/cipi deploy *, \
+                               /usr/local/bin/cipi alias add *, \
+                               /usr/local/bin/cipi alias remove *, \
+                               /usr/local/bin/cipi ssl install *, \
+                               /bin/cat /etc/cipi/apps.json
+SUDOEOF
+    chmod 440 /etc/sudoers.d/cipi-api
 
     rm -rf /tmp/cipi-install
 

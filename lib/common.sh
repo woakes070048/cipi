@@ -117,14 +117,14 @@ read_input() {
     local prompt="$1" default="${2:-}" var="$3"
     if [[ -n "$default" ]]; then echo -e -n "${CYAN}${prompt}${NC} [${default}]: "
     else echo -e -n "${CYAN}${prompt}${NC}: "; fi
-    read -r input; eval "$var=\"${input:-$default}\""
+    read -r input; printf -v "$var" '%s' "${input:-$default}"
 }
 
 parse_args() {
     for arg in "$@"; do
         case "$arg" in
-            --*=*) local k="${arg%%=*}"; k="${k#--}"; eval "ARG_${k//-/_}=\"${arg#*=}\"" ;;
-            --*)   local k="${arg#--}"; eval "ARG_${k//-/_}=true" ;;
+            --*=*) local k="${arg%%=*}"; k="${k#--}"; printf -v "ARG_${k//-/_}" '%s' "${arg#*=}" ;;
+            --*)   local k="${arg#--}"; printf -v "ARG_${k//-/_}" '%s' "true" ;;
         esac
     done
 }
