@@ -10,6 +10,7 @@ All notable changes to Cipi are documented in this file.
 
 - **Nginx default host 404** — requests to unconfigured domains (e.g. server IP with random paths) now always serve the "Server Up" page instead of the default nginx 404 error; uses `rewrite` instead of `try_files` for reliable catch-all behavior
 - **`cipi ssh list` / `cipi ssh remove` silent exit** — both commands printed the header but no keys; caused by `((i++))` returning exit code 1 when `i=0` (post-increment evaluates to 0 = falsy) under `set -euo pipefail`; fixed with `|| true` guard on all arithmetic increments
+- **SSH key comment stripped on setup** — `collect_ssh_key()` used `awk '{print $1, $2}'` to sanitize input, discarding the comment field (third+ column); keys added during install were always stored without their original comment
 
 ### Changed
 
@@ -23,6 +24,7 @@ All notable changes to Cipi are documented in this file.
 - **`cipi reset root-password`** — regenerate the root SSH password and update `server.json` in the vault
 - **`cipi reset db-password`** — regenerate the MariaDB root password and update `server.json` in the vault
 - **`cipi reset redis-password`** — regenerate the Redis password, restart Redis, and update `server.json` in the vault; warns about updating app `.env` files
+- **`cipi ssh rename [number] [name]`** — set or change the display name of an SSH key; updates the comment field in `authorized_keys`; interactive selection if called without arguments
 
 ### Notes
 

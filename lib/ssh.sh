@@ -11,7 +11,8 @@ ssh_command() {
         list)   _ssh_list ;;
         add)    _ssh_add "$@" ;;
         remove) _ssh_remove "$@" ;;
-        *)      error "Use: list add remove"; exit 1 ;;
+        rename) _ssh_rename "$@" ;;
+        *)      error "Use: list add remove rename"; exit 1 ;;
     esac
 }
 
@@ -131,6 +132,98 @@ _ssh_add() {
     cipi_notify \
         "Cipi SSH key added on $(hostname)" \
         "An SSH key was added to the cipi user.\n\nServer: $(hostname) (${server_ip})\nComment: ${comment}\nFingerprint: ${fingerprint}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+}
+
+# ── RENAME ──────────────────────────────────────────────────
+
+_ssh_rename() {
+    local target="${1:-}"
+    local new_name="${2:-}"
+
+    if [[ ! -f "$AUTHORIZED_KEYS" ]] || [[ ! -s "$AUTHORIZED_KEYS" ]]; then
+        warn "No SSH keys to rename"
+        exit 0
+    fi
+
+    local -a keys=()
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        keys+=("$line")
+    done < "$AUTHORIZED_KEYS"
+
+    if [[ ${#keys[@]} -eq 0 ]]; then
+        warn "No SSH keys to rename"
+        exit 0
+    fi
+
+    if [[ -z "$target" ]]; then
+        echo ""
+        echo -e "  ${BOLD}Rename SSH Key${NC}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+
+        local i=0
+        for k in "${keys[@]}"; do
+            (( i++ )) || true
+            local comment
+            comment=$(echo "$k" | awk '{$1=$2=""; print}' | xargs)
+            [[ -z "$comment" ]] && comment="(no comment)"
+            local fingerprint
+            fingerprint=$(echo "$k" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}') || fingerprint="?"
+            echo -e "  ${CYAN}${i}${NC}  ${BOLD}${comment}${NC}"
+            echo -e "     ${DIM}${fingerprint}${NC}"
+            echo ""
+        done
+
+        echo -en "  ${BOLD}Key number to rename (or 'q' to cancel):${NC} "
+        read -r target
+    fi
+
+    [[ "$target" == "q" || -z "$target" ]] && { echo "  Cancelled"; exit 0; }
+
+    if ! [[ "$target" =~ ^[0-9]+$ ]] || [[ "$target" -lt 1 ]] || [[ "$target" -gt ${#keys[@]} ]]; then
+        error "Invalid selection: ${target} (must be 1-${#keys[@]})"
+        exit 1
+    fi
+
+    if [[ -z "$new_name" ]]; then
+        echo -en "  ${BOLD}New name:${NC} "
+        read -r new_name
+    fi
+
+    if [[ -z "$new_name" ]]; then
+        error "Name cannot be empty"
+        exit 1
+    fi
+
+    local selected_key="${keys[$((target-1))]}"
+    local key_type key_data
+    key_type=$(echo "$selected_key" | awk '{print $1}')
+    key_data=$(echo "$selected_key" | awk '{print $2}')
+    local updated_key="${key_type} ${key_data} ${new_name}"
+
+    local tmp
+    tmp=$(mktemp)
+    local idx=0
+    while IFS= read -r line; do
+        if [[ -z "$line" || "$line" == \#* ]]; then
+            echo "$line" >> "$tmp"
+            continue
+        fi
+        (( idx++ )) || true
+        if [[ $idx -eq $target ]]; then
+            echo "$updated_key" >> "$tmp"
+        else
+            echo "$line" >> "$tmp"
+        fi
+    done < "$AUTHORIZED_KEYS"
+
+    mv "$tmp" "$AUTHORIZED_KEYS"
+    chown cipi:cipi "$AUTHORIZED_KEYS"
+    chmod 600 "$AUTHORIZED_KEYS"
+
+    success "Key ${target} renamed to: ${new_name}"
+    log_action "SSH KEY RENAME: ${new_name}"
 }
 
 # ── REMOVE ───────────────────────────────────────────────────
