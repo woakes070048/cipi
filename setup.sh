@@ -442,7 +442,7 @@ EOF
 
     ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
     rm -f /etc/nginx/sites-enabled/default.bak
-    systemctl start nginx
+    systemctl restart nginx
     systemctl enable nginx
 
     echo -e "${GREEN}✓ Nginx${NC}"
