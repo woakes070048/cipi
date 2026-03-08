@@ -349,11 +349,14 @@ server {
 
     # All requests serve the Server Up page (no 404 leaks)
     location / {
-        try_files /index.html =444;
+        try_files /index.html /index.html;
     }
 
     # Custom error pages — always return the Server Up page
     error_page 400 401 403 404 405 408 500 502 503 504 /index.html;
+    location = /index.html {
+        internal;
+    }
 }
 EOF
 
