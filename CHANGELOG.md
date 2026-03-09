@@ -4,6 +4,32 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.2.4] — 2026-03-09
+
+### Added
+
+- **Centralized security event log** — all security-relevant events (SSH key changes, app lifecycle, password resets, sudo/su/SSH login, cron failures) are always logged to `/var/log/cipi/events.log` in a compact one-line format, regardless of whether SMTP is configured; `log_event()` helper in `common.sh` and inline logging in PAM and cron notification scripts
+- **`su` PAM notifications** — PAM auth notification now covers `su` in addition to `sudo` and `sshd`; alerts include who ran `su`, the target user, SSH key, and client IP; PAM rule added to `/etc/pam.d/su` in both `setup.sh` and migration `4.2.3.sh`
+- **Client identity in all notifications** — every email notification sent via `cipi_notify()` now includes a footer with the client IP (`SSH_CLIENT`) and the SSH key name used to authenticate; key name is resolved via `SSH_USER_AUTH` with `auth.log` fallback
+- **Sudo command in notifications** — sudo alerts now include the command that was executed (`SUDO_COMMAND`)
+- **SSH key rename notification** — email alert when an SSH key is renamed; includes old name, new name, fingerprint, server hostname, and timestamp
+
+### Fixed
+
+- **SSH key fingerprint resolution** — `SSH_USER_AUTH` contains raw key data (`type base64`), not a fingerprint; fixed `_resolve_ssh_key_name()` (PAM script), `_get_session_fingerprint()` (`ssh.sh`) and `_get_session_key_name()` (`common.sh`) to reconstruct the fingerprint via `ssh-keygen -lf -` instead of reading field 3 directly
+- **Email `\n` literal** — `_smtp_send` now uses `printf %b` instead of `%s` for the body so escape sequences are interpreted correctly
+- **Backup S3 region handling** — `_aws_s3()` now passes `--region` from `backup.json` (defaults to `eu-central-1`); fixes `NoneType is not iterable` errors on S3-compatible APIs when region is empty
+- **Crontab setup error** — `setup_cron` no longer fails when no existing crontab is present (`|| true` guard on `crontab -l`)
+- **Installer resilience** — `setup_pam` and `setup_cron` failures no longer abort the entire installation; errors are logged with a warning and setup continues
+
+### Changed
+
+- **Privileged-to-inferior suppression** — PAM auth notifications from `cipi`/`root` towards non-sudo app users are now suppressed unless the action is part of an app create/edit/delete lifecycle operation; reduces noise from routine app provisioning
+- **Sync push improvements** — uses cipi's ed25519 sync key explicitly (`-i /home/cipi/.ssh/id_ed25519`); rsync failure gracefully falls back to scp; remote Cipi version checked via `sudo cipi version` instead of reading `/etc/cipi/version`; export suppresses manual transfer instructions during push; archive cleaned up after successful import; `scp` examples updated to use `cipi` user
+- **SSH key rename logging** — `log_action` now includes old and new key name for rename operations
+
+---
+
 ## [4.2.3] — 2026-03-09
 
 ### Fixed
