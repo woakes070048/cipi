@@ -47,9 +47,6 @@ if [[ -x /usr/local/bin/cipi-auth-notify ]]; then
     if ! grep -q 'cipi-auth-notify' /etc/pam.d/sshd 2>/dev/null; then
         echo 'session optional pam_exec.so seteuid /usr/local/bin/cipi-auth-notify' >> /etc/pam.d/sshd
     fi
-    if ! grep -q 'cipi-auth-notify' /etc/pam.d/su 2>/dev/null; then
-        echo 'session optional pam_exec.so seteuid /usr/local/bin/cipi-auth-notify' >> /etc/pam.d/su
-    fi
     echo "PAM auth notifications installed"
 fi
 
