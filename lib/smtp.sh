@@ -113,7 +113,7 @@ _smtp_send() {
     _smtp_write_rc || return 1
 
     local from; from=$(echo "$_sj" | jq -r '.from // "noreply@localhost"')
-    printf "From: %s\nTo: %s\nSubject: %s\n\n%s\n" "$from" "$to" "$subject" "$body" | \
+    printf "From: %s\nTo: %s\nSubject: %s\n\n%b\n" "$from" "$to" "$subject" "$body" | \
         msmtp -C "$SMTP_RC" "$to" 2>/dev/null
 }
 
