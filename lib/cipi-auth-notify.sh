@@ -90,6 +90,7 @@ _is_internal() {
         cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || echo "")
         case "$cmd" in
             *php-fpm*|*php*artisan*queue*|*supervisord*|*cipi-queue*) return 0 ;;
+            */usr/local/bin/cipi*|*/bin/dep\ *) return 0 ;;
         esac
         pid=$(awk '/^PPid:/{print $2}' "/proc/$pid/status" 2>/dev/null || echo 0)
         i=$((i + 1))

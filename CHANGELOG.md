@@ -4,6 +4,24 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.2.6] — 2026-03-10
+
+### Fixed
+
+- **Git clone non-interactive** — `setup.sh` and `self-update.sh` now set `GIT_TERMINAL_PROMPT=0` on `git clone` commands to prevent credential prompts in automated/piped environments
+- **Sudo notification spam during deploy** — PAM auth notifications were triggered when app users executed `sudo cipi-worker stop/restart` during deploys; `_is_internal()` now detects `/usr/local/bin/cipi` commands and Deployer (`dep`) in the process tree, suppressing notifications for all cipi-initiated sudo operations
+
+### Changed
+
+- **Official repo only** — removed `andreapollastri/cipi` fallback from `setup.sh` and `self-update.sh`; all references now point exclusively to `cipi-sh/cipi`
+
+### Note
+
+If you have issues with `cipi self-update` after 4.2.5, run:
+`sed -i 's/^    git clone/    GIT_TERMINAL_PROMPT=0 git clone/' /opt/cipi/lib/self-update.sh`
+
+---
+
 ## [4.2.5] — 2026-03-09
 
 ### Changed
@@ -11,6 +29,11 @@ All notable changes to Cipi are documented in this file.
 - **GitHub organization migration** — moved repos to [cipi-sh](https://github.com/cipi-sh/) organization; Composer package names updated from `andreapollastri/cipi-api` → `cipi/api` and `andreapollastri/cipi-agent` → `cipi/agent`
 - **Self-update & installer fallback** — `setup.sh` and `self-update.sh` now try `cipi-sh/cipi` first, falling back to `andreapollastri/cipi` for backward compatibility during the main repo transition
 - **Migration 4.2.5** — automatically migrates existing installations: replaces old Composer package in the API app and updates crontab references
+
+### Note
+
+Cipi has been moved to organization namespace. If you have issues within self-update command after this version, run:
+`sed -i 's/^    git clone/    GIT_TERMINAL_PROMPT=0 git clone/' /opt/cipi/lib/self-update.sh` to fix it!
 
 ---
 

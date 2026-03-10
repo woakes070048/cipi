@@ -10,7 +10,6 @@
 set -e
 
 REPO="cipi-sh/cipi"
-REPO_FALLBACK="andreapollastri/cipi"
 BRANCH="${1:-latest}"
 BUILD=""  # resolved from version.md after git clone in install_cipi()
 
@@ -720,8 +719,7 @@ install_cipi() {
 
     cd /tmp
     rm -rf cipi-install
-    git clone -b "$BRANCH" --depth 1 "https://github.com/${REPO}.git" cipi-install 2>/dev/null \
-        || git clone -b "$BRANCH" --depth 1 "https://github.com/${REPO_FALLBACK}.git" cipi-install 2>/dev/null
+    GIT_TERMINAL_PROMPT=0 git clone -b "$BRANCH" --depth 1 "https://github.com/${REPO}.git" cipi-install 2>/dev/null
 
     BUILD="$(tr -d '[:space:]' < /tmp/cipi-install/version.md 2>/dev/null)"
     [[ -z "$BUILD" ]] && { echo "Cannot read version.md from repo"; exit 1; }
@@ -1043,7 +1041,6 @@ final_summary() {
 main() {
     # Fetch version early for logo display
     BUILD=$(curl -fsSL "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/version.md" 2>/dev/null | tr -d '[:space:]')
-    [[ -z "$BUILD" ]] && BUILD=$(curl -fsSL "https://raw.githubusercontent.com/${REPO_FALLBACK}/refs/heads/${BRANCH}/version.md" 2>/dev/null | tr -d '[:space:]')
     [[ -z "$BUILD" ]] && BUILD="?"
 
     show_logo
