@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.2.7] — 2026-03-10
+
+### Fixed
+
+- **Workers stuck in EXITED** — Supervisor `autorestart=unexpected` (introduced in 4.1.2) prevented workers from restarting after a graceful `--max-time` exit (exit code 0); reverted to `autorestart=true` which is safe because `supervisorctl stop` (used during deploys) puts processes in STOPPED state, which Supervisor never auto-restarts regardless of the `autorestart` setting
+
+---
+
 ## [4.2.6] — 2026-03-10
 
 ### Fixed
