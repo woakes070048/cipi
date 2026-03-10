@@ -129,9 +129,7 @@ Move entire stacks or single apps between Cipi servers — for migration, failov
 
 ## Documentation
 
-Full docs — installation, CLI reference, MCP/API setup, security model, webhook config — at:
-
-**[cipi.sh/docs](https://cipi.sh/docs)**
+Full docs at: **[cipi.sh/docs](https://cipi.sh/docs)**
 
 ---
 
