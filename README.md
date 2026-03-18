@@ -66,16 +66,16 @@ That's it. Your Laravel app is live.
 
 Every app gets a fully isolated environment. **Laravel** (default): zero-downtime deploy, DB, workers, cron, webhook. **`--custom`**: classic deploy into `htdocs`, configurable docroot and Nginx (try_files: index.php / index.html / 404.html; entry: index.php or index.html), no DB, no .env, no cron, no workers.
 
-| Component          | Details                                                                 |
-| ------------------ | ----------------------------------------------------------------------- |
-| **Web server**     | Nginx reverse proxy with per-app virtual hosts, optimized for Laravel   |
-| **PHP & Composer** | Selectable per app — PHP 7.4 to 8.5, hot-swappable                      |
-| **Database**       | MariaDB, auto-tuned to RAM, dedicated DB and user per Laravel app        |
-| **Queue workers**  | Supervisor with per-app pools (Laravel) — add, scale, monitor           |
+| Component          | Details                                                                             |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| **Web server**     | Nginx reverse proxy with per-app virtual hosts, optimized for Laravel               |
+| **PHP & Composer** | Selectable per app — PHP 7.4 to 8.5, hot-swappable                                  |
+| **Database**       | MariaDB, auto-tuned to RAM, dedicated DB and user per Laravel app                   |
+| **Queue workers**  | Supervisor with per-app pools (Laravel) — add, scale, monitor                       |
 | **Deployments**    | Deployer — Laravel: atomic symlink, 5 releases, rollback; Custom: clone into htdocs |
-| **SSL**            | Let's Encrypt via Certbot with SAN support and auto-renewal             |
-| **Security**       | Fail2ban + UFW, per-app Linux user + PHP-FPM pool + SSH key             |
-| **Backups**        | Automated DB and storage dumps to S3 or any compatible provider         |
+| **SSL**            | Let's Encrypt via Certbot with SAN support and auto-renewal                         |
+| **Security**       | Fail2ban + UFW, per-app Linux user + PHP-FPM pool + SSH key                         |
+| **Backups**        | Automated DB and storage dumps to S3 or any compatible provider                     |
 
 ---
 
@@ -108,7 +108,7 @@ Cipi ships with a built-in MCP server. Laravel first: install the `cipi-agent` L
 Works with Claude, Cursor, VS Code, OpenAI, Gemini, and more.
 
 ```bash
-composer require cipi-sh/cipi-agent
+composer require cipi/agent
 ```
 
 MCP tools exposed: `health`, `app_info`, `deploy`, `logs`, `db_query`, `artisan`.

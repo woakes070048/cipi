@@ -12,7 +12,7 @@ All notable changes to Cipi are documented in this file.
 
 ### Changed
 
-- **App types** — `cipi app create` now supports only **Laravel** (default) and **`--custom`**. The options `--wordpress`, `--static`, and `--generic` have been removed.
+- **App types** — `cipi app create` now supports only **Laravel** (default) and **`--custom`**.
 - **`cipi app show`** — Displays type "Custom" and docroot / try_files / entry_point when applicable; Webhook line is shown only for Laravel apps.
 - **`cipi app env`** — Exits with an error for custom apps (no .env).
 - **`cipi app reset-db-password`** — Exits with an error for custom apps (no database).
