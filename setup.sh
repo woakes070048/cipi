@@ -743,6 +743,11 @@ install_cipi() {
     cp cipi-install/lib/*.sh /opt/cipi/lib/
     chmod 700 /opt/cipi/lib/*.sh
 
+    # Deployer templates (per app type: laravel, wordpress, static, generic)
+    if [ -d "cipi-install/lib/deployer" ]; then
+        cp -r cipi-install/lib/deployer /opt/cipi/lib/
+    fi
+
     # Cipi API package (for cipi api)
     if [ -d "cipi-install/cipi-api" ]; then
         rm -rf /opt/cipi/cipi-api 2>/dev/null
