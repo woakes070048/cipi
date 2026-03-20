@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.4.4] — 2026-03-20
+
+### Added
+
+- **Optional Git for custom apps** — On `cipi app create --custom`, the Git repository prompt can be left empty to provision SFTP-only hosting (no clone): `htdocs` is created with a placeholder page, branch is omitted, and `cipi deploy` explains that there is no repository until you set one with `cipi app edit <app> --repository=...`.
+
+---
+
 ## [4.3.3] — 2026-03-18
 
 ### Added

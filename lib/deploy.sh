@@ -27,10 +27,15 @@ _deploy_run() {
     if [[ ! -f "$df" ]]; then
         step "Creating deployer config..."
         source "${CIPI_LIB}/app.sh"
-        local repo branch
+        local repo branch is_custom
         repo=$(app_get "$app" repository)
         branch=$(app_get "$app" branch)
-        [[ -z "$repo" || -z "$php_ver" ]] && { error "App config incomplete (repository/php). Run: cipi app edit $app"; exit 1; }
+        is_custom=$(app_get "$app" custom)
+        [[ -z "$php_ver" ]] && { error "App config incomplete (php). Run: cipi app edit $app"; exit 1; }
+        if [[ "$is_custom" != "true" && -z "$repo" ]]; then
+            error "App config incomplete (repository). Run: cipi app edit $app"
+            exit 1
+        fi
         _create_deployer_config_for_app "$app"
         success "Deployer config created"
     fi

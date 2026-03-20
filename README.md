@@ -10,7 +10,7 @@ No panel, no bloat — so you can focus on what you love: building your applicat
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/cipi-sh/cipi?style=flat&color=yellow)](https://github.com/cipi-sh/cipi/stargazers)
-[![Version](https://img.shields.io/badge/version-4.3.3-green.svg)](https://github.com/cipi-sh/cipi/releases)
+[![Version](https://img.shields.io/badge/version-4.4.4-green.svg)](https://github.com/cipi-sh/cipi/releases)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04%2B-orange.svg)](https://ubuntu.com)
 
 [Website](https://cipi.sh) · [Docs](https://cipi.sh/docs) · [Report a bug](https://github.com/cipi-sh/cipi/issues)
@@ -48,7 +48,7 @@ wget -O - https://cipi.sh/setup.sh | bash
 cipi app create
 # username, domain, git repo, branch, PHP version
 # → Laravel: user, DB, Nginx, workers, cron, webhook
-# → Custom: user, Nginx, PHP-FPM, deploy key (no DB, no cron, no webhook)
+# → Custom: user, Nginx, PHP-FPM; Git optional (empty = SFTP-only to ~/htdocs)
 ```
 
 **3. Deploy and go live:**

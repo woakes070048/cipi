@@ -18,8 +18,19 @@ app_create() {
     # Interactive prompts for missing fields
     [[ -z "$app_user" ]]    && read_input "App username (lowercase, min 3 chars)" "" app_user
     [[ -z "$domain" ]]      && read_input "Primary domain" "" domain
-    [[ -z "$repository" ]]  && read_input "Git repository URL (SSH)" "" repository
-    [[ -z "${ARG_branch:-}" ]] && read_input "Branch" "$branch" branch
+    if [[ "$app_type" == "custom" ]]; then
+        if [[ -z "$repository" && "${ARG_repository+x}" != x ]]; then
+            read_input "Git — leave empty to use SFTP only (no repository)" "" repository
+        fi
+    else
+        [[ -z "$repository" ]] && read_input "Git repository URL (SSH)" "" repository
+    fi
+    [[ "$app_type" == "laravel" && -z "$repository" ]] && { error "Git repository is required for Laravel apps"; exit 1; }
+    if [[ "$app_type" == "custom" && -z "$repository" ]]; then
+        branch=""
+    elif [[ -z "${ARG_branch:-}" ]]; then
+        read_input "Branch" "$branch" branch
+    fi
     [[ -z "${ARG_php:-}" ]] && read_input "PHP version" "$php_ver" php_ver
 
     # Custom app: docroot only (Nginx always uses index.php)
@@ -27,7 +38,7 @@ app_create() {
     if [[ "$app_type" == "custom" ]]; then
         docroot="${ARG_docroot:-}"
         if [[ -z "$docroot" ]]; then
-            echo -e "  Document root inside repo (default /): e.g. ${CYAN}/${NC}, ${CYAN}www${NC}, ${CYAN}dist${NC}, ${CYAN}public${NC}"
+            echo -e "  Document root under htdocs (default /): e.g. ${CYAN}/${NC}, ${CYAN}www${NC}, ${CYAN}dist${NC}, ${CYAN}public${NC}"
             read_input "Docroot" "/" docroot
         fi
         [[ "$docroot" == "/" || "$docroot" == "." ]] && docroot=""
@@ -69,6 +80,11 @@ app_create() {
     step "Directories..."
     if [[ "$app_type" == "custom" ]]; then
         mkdir -p "${home}"/{shared,logs,.ssh,.deployer}
+        if [[ -z "$repository" ]]; then
+            mkdir -p "${home}/htdocs"
+            echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ready</title></head><body><p>Upload your site via SFTP to <code>~/htdocs</code> (this user).</p></body></html>' > "${home}/htdocs/index.html"
+            chown "${app_user}:${app_user}" "${home}/htdocs/index.html"
+        fi
     elif [[ "$app_type" == "laravel" ]]; then
         mkdir -p "${home}"/{shared/storage/{app/public,framework/{cache/data,sessions,views},logs},logs,.ssh,.deployer}
     fi
@@ -222,9 +238,16 @@ JSON
     log_action "APP CREATED: $app_user domain=$domain php=$php_ver"
 
     # Email notification
+    local _notify_repo _notify_branch
+    _notify_repo="$repository"
+    _notify_branch="$branch"
+    if [[ "$app_type" == "custom" && -z "$repository" ]]; then
+        _notify_repo="(none — SFTP only)"
+        _notify_branch="—"
+    fi
     cipi_notify \
         "Cipi app created: ${app_user} on $(hostname)" \
-        "A new app was created.\n\nServer: $(hostname)\nApp: ${app_user}\nDomain: ${domain}\nPHP: ${php_ver}\nBranch: ${branch}\nRepository: ${repository}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "A new app was created.\n\nServer: $(hostname)\nApp: ${app_user}\nDomain: ${domain}\nPHP: ${php_ver}\nBranch: ${_notify_branch}\nRepository: ${_notify_repo}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
     # 9. Supervisor (Laravel only)
     step "Queue worker..."
@@ -289,16 +312,24 @@ SUDO
         echo ""
     fi
     if [[ "$app_type" == "custom" ]]; then
-        if [[ -n "${GIT_PROVIDER:-}" && -n "${GIT_DEPLOY_KEY_ID:-}" ]]; then
-            echo -e "  ${BOLD}Git${NC}         ${GREEN}${GIT_PROVIDER} deploy key ✓${NC}"
+        if [[ -n "$repository" ]]; then
+            if [[ -n "${GIT_PROVIDER:-}" && -n "${GIT_DEPLOY_KEY_ID:-}" ]]; then
+                echo -e "  ${BOLD}Git${NC}         ${GREEN}${GIT_PROVIDER} deploy key ✓${NC}"
+            else
+                echo -e "  ${BOLD}Deploy Key${NC}  (add to your Git provider)"
+                echo -e "  ${CYAN}${deploy_key}${NC}"
+                [[ -z "${GIT_PROVIDER:-}" ]] && echo -e "  ${DIM}Tip: cipi git github-token <PAT> to auto-configure next time${NC}"
+            fi
+            echo ""
+            echo -e "  ${BOLD}Next:${NC} cipi deploy ${app_user}"
+            echo -e "        cipi ssl install ${app_user}"
         else
-            echo -e "  ${BOLD}Deploy Key${NC}  (add to your Git provider)"
-            echo -e "  ${CYAN}${deploy_key}${NC}"
-            [[ -z "${GIT_PROVIDER:-}" ]] && echo -e "  ${DIM}Tip: cipi git github-token <PAT> to auto-configure next time${NC}"
+            echo -e "  ${BOLD}Deploy${NC}     ${DIM}No Git repository — upload via SFTP to ${home}/htdocs${NC}"
+            echo ""
+            echo -e "  ${BOLD}Next:${NC} Upload files to ${CYAN}~/htdocs${NC} (SFTP as ${app_user})"
+            echo -e "        cipi ssl install ${app_user}"
+            echo -e "  ${DIM}Add a repo later: cipi app edit ${app_user} --repository=<SSH-URL>${NC}"
         fi
-        echo ""
-        echo -e "  ${BOLD}Next:${NC} cipi deploy ${app_user}"
-        echo -e "        cipi ssl install ${app_user}"
     elif [[ "$app_type" == "laravel" ]]; then
         if [[ -n "${GIT_PROVIDER:-}" && -n "${GIT_DEPLOY_KEY_ID:-}" && -n "${GIT_WEBHOOK_ID:-}" ]]; then
             echo -e "  ${BOLD}Git${NC}         ${GREEN}${GIT_PROVIDER} auto-configured ✓${NC}"

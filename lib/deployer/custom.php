@@ -17,8 +17,11 @@ host('localhost')
     ->set('ssh_arguments', ['-o StrictHostKeyChecking=accept-new', '-i __CIPI_DEPLOY_PATH__/.ssh/id_ed25519']);
 
 task('deploy', function () {
-    $path = get('deploy_path') . '/htdocs';
     $repo = get('repository');
+    if ($repo === '' || $repo === null) {
+        writeln('<info>No Git repository configured — upload files via SFTP to {{deploy_path}}/htdocs</info>');
+        return;
+    }
     $branch = get('branch');
     if (test("[ -d {{deploy_path}}/htdocs/.git ]")) {
         run("cd {{deploy_path}}/htdocs && git fetch origin && git reset --hard origin/{{branch}}");
