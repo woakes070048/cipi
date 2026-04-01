@@ -4,6 +4,22 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.4.11] — 2026-04-02
+
+### Fixed
+
+- **Deploy `deploy:writable` / chmod on `storage/logs/*.log`** — Deployer was running `chmod -R` on **`storage`** and **`storage/logs`**, so it tried to change mode on existing `laravel-*.log` files (EPERM with ACLs or other attributes). **`writable_dirs`** now lists only concrete subdirs under `storage` (app, framework, …), **not** the parent `storage` or `storage/logs`. A follow-up task sets **`chmod 775`** on the **`storage/logs` directory only** (no recursive file chmod). **`lib/deployer/laravel.php`** is updated; **migration 4.4.11** regenerates `/home/*/.deployer/deploy.php` from the template for every non-custom app (overwrites local `deploy.php`).
+
+---
+
+## [4.4.10] — 2026-04-02
+
+### Fixed
+
+- **Deploy `deploy:writable` / chmod on `storage/logs/*.log`** — Residual per-file ACLs on Laravel logs (from older Cipi) still caused *Operation not permitted* during `chmod`. `ensure_app_logs_permissions` now strips file ACLs and default ACL on `logs/` and `shared/storage/logs` **before** re-applying directory-only ACLs for `cipi`. **`cipi deploy <app>`** runs this automatically before Deployer. **Migration 4.4.10** applies the same once on existing servers.
+
+---
+
 ## [4.4.9] — 2026-04-02
 
 ### Fixed

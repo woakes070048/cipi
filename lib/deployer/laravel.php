@@ -14,10 +14,13 @@ set('writable_mode', 'chmod');
 
 add('shared_files', ['.env']);
 add('shared_dirs', ['storage']);
+// Do not list parent "storage" or "storage/logs" — chmod -R would touch laravel-*.log and can
+// fail (EPERM) with ACLs/immutable bits. Subdirs below are enough; logs dir is chmod'd separately.
 add('writable_dirs', [
-    'bootstrap/cache', 'storage', 'storage/app', 'storage/app/public',
+    'bootstrap/cache',
+    'storage/app', 'storage/app/public',
     'storage/framework', 'storage/framework/cache', 'storage/framework/cache/data',
-    'storage/framework/sessions', 'storage/framework/views', 'storage/logs',
+    'storage/framework/sessions', 'storage/framework/views',
 ]);
 
 host('localhost')
@@ -28,9 +31,14 @@ host('localhost')
 after('deploy:vendors', 'artisan:storage:link');
 after('deploy:vendors', 'artisan:migrate');
 after('deploy:vendors', 'artisan:optimize');
+after('deploy:writable', 'cipi:chmod_storage_logs_dir');
 before('deploy:symlink', 'workers:stop');
 after('deploy:symlink', 'artisan:queue:restart');
 after('deploy:symlink', 'workers:restart');
+
+task('cipi:chmod_storage_logs_dir', function () {
+    run('chmod 775 {{release_path}}/storage/logs 2>/dev/null || true');
+});
 
 task('workers:stop', function () {
     run('sudo /usr/local/bin/cipi-worker stop __CIPI_APP_USER__');

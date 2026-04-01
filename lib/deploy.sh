@@ -40,6 +40,9 @@ _deploy_run() {
         success "Deployer config created"
     fi
 
+    # Legacy per-file ACLs on laravel-*.log break deploy:writable chmod — strip before Deployer runs.
+    ensure_app_logs_permissions "$app" || true
+
     info "Deploying '${app}'..."
     echo ""
     sudo -u "$app" bash -c "cd ${home} && /usr/bin/php${php_ver} /usr/local/bin/dep deploy -f ${df} 2>&1"

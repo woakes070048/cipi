@@ -218,14 +218,25 @@ reload_supervisor() {
 # Nginx writes vhost logs as www-data; directory uses setgid www-data so new files stay group-readable.
 #
 # Do NOT apply setfacl -R or default ACLs on shared/storage/logs — Deployer chmod on Laravel log
-# files fails with "Operation not permitted" when per-file ACLs exist. Directory ACLs are enough:
-# cipi traverses via rx on dirs; log files are typically 644 (other read).
+# files fails with "Operation not permitted" when per-file ACLs exist. Strip any file ACLs left
+# from older Cipi versions, then re-apply directory ACLs only.
 ensure_app_logs_permissions() {
     local app="${1:-}"
     [[ -z "$app" || "$app" == "cipi" ]] && return 0
     local home="/home/${app}"
     [[ -d "$home" ]] || return 0
     id "$app" &>/dev/null || return 0
+
+    if command -v setfacl &>/dev/null; then
+        if [[ -d "${home}/logs" ]]; then
+            find "${home}/logs" -type f -exec setfacl -b {} \; 2>/dev/null || true
+            setfacl -k "${home}/logs" 2>/dev/null || true
+        fi
+        if [[ -d "${home}/shared/storage/logs" ]]; then
+            find "${home}/shared/storage/logs" -type f -name '*.log' -exec setfacl -b {} \; 2>/dev/null || true
+            setfacl -k "${home}/shared/storage/logs" 2>/dev/null || true
+        fi
+    fi
 
     mkdir -p "${home}/logs"
     chown "${app}:www-data" "${home}/logs"
