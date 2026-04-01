@@ -4,6 +4,15 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.4.9] — 2026-04-02
+
+### Fixed
+
+- **`common.sh` defaults vs readonly `CIPI_*`** — Replaced `: "${CIPI_CONFIG:=...}"` with `if [[ -z "${CIPI_CONFIG:-}" ]]; then … fi` (and the same for `CIPI_LOG`). If a server never completed `self-update` after 4.4.6, `/opt/cipi/lib/common.sh` could still contain a plain `CIPI_CONFIG=…` assignment on line 7; that blocks every `cipi` run until the file is replaced.
+- **Stuck servers** — If `cipi self-update` fails before fixing `common.sh`, run once as root: `curl -fsSL https://raw.githubusercontent.com/cipi-sh/cipi/latest/lib/fix-common-readonly.sh | bash` (see `lib/fix-common-readonly.sh`), then `cipi self-update`.
+
+---
+
 ## [4.4.8] — 2026-04-02
 
 ### Fixed

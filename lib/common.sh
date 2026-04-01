@@ -3,10 +3,14 @@
 # Cipi — Common Functions
 #############################################
 
-# When sourced outside the main cipi binary (e.g. migrations), these may be unset.
-# The main cipi script sets them readonly — use := with : so we never reassign.
-: "${CIPI_CONFIG:=/etc/cipi}"
-: "${CIPI_LOG:=/var/log/cipi}"
+# When sourced outside the main cipi binary (e.g. migrations), CIPI_* may be unset.
+# The main cipi script sets them readonly — only assign when unset (never touch readonly).
+if [[ -z "${CIPI_CONFIG:-}" ]]; then
+    CIPI_CONFIG="/etc/cipi"
+fi
+if [[ -z "${CIPI_LOG:-}" ]]; then
+    CIPI_LOG="/var/log/cipi"
+fi
 
 source "${CIPI_LIB}/vault.sh"
 
