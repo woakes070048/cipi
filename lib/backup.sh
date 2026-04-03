@@ -14,6 +14,27 @@ backup_command() {
     esac
 }
 
+# Root crontab: daily backup + prune for all apps (no per-app argument).
+# Skips if any `cipi backup run` line already exists (e.g. manual or migration).
+_ensure_backup_cron_root() {
+    [[ $EUID -ne 0 ]] && return 0
+    # Do not append if either job already exists (avoids duplicate prune when only prune was scheduled).
+    if crontab -l 2>/dev/null | grep -qF 'cipi backup run'; then
+        return 0
+    fi
+    if crontab -l 2>/dev/null | grep -qF 'cipi backup prune'; then
+        return 0
+    fi
+    (
+        crontab -l 2>/dev/null || true
+        cat <<'BKCRON'
+# === CIPI BACKUP (all apps) ===
+0 2 * * * /usr/local/bin/cipi backup run >> /var/log/cipi/backup.log 2>&1
+0 3 * * * /usr/local/bin/cipi backup prune --weeks=4 >> /var/log/cipi/backup-prune.log 2>&1
+BKCRON
+    ) | crontab -
+}
+
 _ensure_awscli() {
     if ! command -v aws &>/dev/null; then
         step "Installing AWS CLI v2..."
@@ -98,6 +119,7 @@ AWSCFG
         exit 1
     fi
     success "Backup configured (S3 connection OK)"
+    _ensure_backup_cron_root
 }
 
 _bk_run() {

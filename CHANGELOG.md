@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.4.15] — 2026-04-03
+
+### Changed
+
+- **Root crontab S3 backup/prune — all apps** — `cipi backup configure` now appends default root cron lines that run **`cipi backup run`** and **`cipi backup prune --weeks=4`** (no per-app name), unless a `cipi backup run` line already exists. **Migration 4.4.15** rewrites existing root crontab entries from `cipi backup run <app>` / `cipi backup prune <app> --weeks=N` to the global form and drops duplicate lines after normalization.
+
+---
+
 ## [4.4.14] — 2026-04-03
 
 ### Fixed
