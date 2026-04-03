@@ -808,6 +808,12 @@ www-data ALL=(root) NOPASSWD: /usr/local/bin/cipi app create *, \
                                /usr/local/bin/cipi alias add *, \
                                /usr/local/bin/cipi alias remove *, \
                                /usr/local/bin/cipi ssl install *, \
+                               /usr/local/bin/cipi db list, \
+                               /usr/local/bin/cipi db create *, \
+                               /usr/local/bin/cipi db delete *, \
+                               /usr/local/bin/cipi db backup *, \
+                               /usr/local/bin/cipi db restore * *, \
+                               /usr/local/bin/cipi db password *, \
                                /bin/cat /etc/cipi/apps.json
 SUDOEOF
     chmod 440 /etc/sudoers.d/cipi-api

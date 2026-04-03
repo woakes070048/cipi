@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.4.17] — 2026-04-03
+
+### Fixed
+
+- **Panel API database commands / `sudo: a terminal is required`** — `/etc/sudoers.d/cipi-api` allowed `www-data` to run only `cipi app|deploy|alias|ssl` and `cat apps.json`, not **`cipi db`**. Any `sudo cipi db …` from PHP (sync `GET /api/dbs` or queue jobs) therefore asked for a password and failed without a TTY. The whitelist now includes **`db list`**, **`db create`**, **`db delete`**, **`db backup`**, **`db restore`** (two args), and **`db password`**. New installs get this from **`setup.sh`**; existing servers via **migration 4.4.17** (runs on `cipi self-update`).
+
+---
+
 ## [4.4.16] — 2026-04-03
 
 ### Fixed
