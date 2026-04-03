@@ -50,6 +50,42 @@ _api_ensure_psysh_home() {
     chown -R www-data:www-data "${h}/.config" 2>/dev/null || true
 }
 
+# Package version from composer.lock — no php artisan / composer (avoids Laravel bootstrap hang on api status).
+_api_lock_package_version() {
+    local pkg="$1" lock="${CIPI_API_ROOT}/composer.lock"
+    [[ -f "$lock" ]] && command -v jq >/dev/null 2>&1 || return 1
+    jq -r --arg n "$pkg" '.packages[] | select(.name == $n) | .version' "$lock" 2>/dev/null | head -1
+}
+
+# Absolute path to panel SQLite DB from .env (default Laravel relative path).
+_api_panel_sqlite_path() {
+    local envf="${CIPI_API_ROOT}/.env" raw
+    [[ -f "$envf" ]] || return 1
+    grep -q '^DB_CONNECTION=sqlite' "$envf" 2>/dev/null || return 1
+    raw=$(grep '^DB_DATABASE=' "$envf" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]"\r')
+    [[ -z "$raw" || "$raw" == "null" ]] && raw="database/database.sqlite"
+    if [[ "$raw" =~ ^/ ]]; then
+        echo "$raw"
+    else
+        echo "${CIPI_API_ROOT}/${raw}"
+    fi
+}
+
+# Pending Cipi API jobs: direct sqlite3 when possible; tinker only as fallback (short timeout).
+_api_pending_jobs_count() {
+    local envf="${CIPI_API_ROOT}/.env" db c
+    if [[ -f "$envf" ]] && grep -q '^DB_CONNECTION=sqlite' "$envf" 2>/dev/null; then
+        db=$(_api_panel_sqlite_path) || true
+        if [[ -n "$db" && -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+            c=$(sqlite3 "$db" "SELECT COUNT(*) FROM cipi_jobs WHERE status IN ('pending','running');" 2>/dev/null)
+            [[ -n "$c" && "$c" =~ ^[0-9]+$ ]] && { echo "$c"; return; }
+        fi
+    fi
+    c=$(cd "${CIPI_API_ROOT}" && _api_timeout 20 sudo -u www-data env HOME=/tmp php artisan tinker --execute="echo \CipiApi\Models\CipiJob::whereIn('status',['pending','running'])->count();" 2>/dev/null) || c="?"
+    [[ -z "$c" ]] && c="?"
+    echo "$c"
+}
+
 # Terminal checklist (no whiptail): toggle numbers, Enter to confirm. Default: all on.
 # NOTE: This is often run inside $(...) for assignment; stdout is captured, so all UI must go to stderr.
 #       Reads must use /dev/tty so input is not lost when stdin is not the TTY in a subshell.
@@ -538,9 +574,8 @@ api_status() {
 
     _api_show_versions
 
-    # Pending jobs (HOME=/tmp avoids psysh writing to /var/www/.config)
     local pending
-    pending=$(cd "${CIPI_API_ROOT}" && _api_timeout 45 sudo -u www-data env HOME=/tmp php artisan tinker --execute="echo \CipiApi\Models\CipiJob::whereIn('status',['pending','running'])->count();" 2>/dev/null || echo "?")
+    pending=$(_api_pending_jobs_count)
     echo -e "  Jobs:       ${CYAN}${pending} pending${NC}"
 
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -549,9 +584,14 @@ api_status() {
 
 _api_show_versions() {
     local laravel_ver cipi_api_ver
-    laravel_ver=$(_api_timeout 40 bash -c "cd \"${CIPI_API_ROOT}\" && sudo -u www-data env HOME=/tmp php artisan --version 2>/dev/null" | grep -oP '[\d.]+' | head -1)
+    laravel_ver=$(_api_lock_package_version "laravel/framework")
+    laravel_ver="${laravel_ver#v}"
+    [[ -z "$laravel_ver" ]] && laravel_ver=$(_api_timeout 12 bash -c "cd \"${CIPI_API_ROOT}\" && sudo -u www-data env HOME=/tmp php artisan --version 2>/dev/null" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     [[ -z "$laravel_ver" ]] && laravel_ver="unknown"
-    cipi_api_ver=$(_api_timeout 25 bash -c "cd \"${CIPI_API_ROOT}\" && composer show cipi/api 2>/dev/null" | grep -oP 'versions\s*:\s*\K.*' | head -1)
+
+    cipi_api_ver=$(_api_lock_package_version "cipi/api")
+    [[ -z "$cipi_api_ver" ]] && cipi_api_ver=$(_api_timeout 12 bash -c "cd \"${CIPI_API_ROOT}\" && composer show cipi/api 2>/dev/null" | sed -n 's/^[[:space:]]*versions[[:space:]]*:[[:space:]]*//p' | head -1)
+    cipi_api_ver="${cipi_api_ver#v}"
     [[ -z "$cipi_api_ver" ]] && cipi_api_ver="dev"
     echo -e "  Laravel:    ${CYAN}${laravel_ver}${NC}"
     echo -e "  cipi-api:   ${CYAN}${cipi_api_ver}${NC}"
