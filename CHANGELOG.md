@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.4.18] — 2026-04-06
+
+### Fixed
+
+- **App crontabs wiped by migration 4.4.14** — The `sed` command in migration 4.4.14 used `|` as delimiter while the replacement string contained `||` (bash OR for `cipi-app-notify`). `sed` interpreted the first `|` of `||` as end-of-replacement, failed to parse, and produced empty output — which `crontab -u <user> -` then installed as an empty crontab, wiping both the **Laravel Scheduler** (`schedule:run`) and the **deploy trigger** for every app. Fixed the 4.4.14 `sed` to use `#` as delimiter. **Migration 4.4.18** detects apps missing `schedule:run` and re-creates the full crontab (scheduler + deploy trigger + failure notification).
+
+---
+
 ## [4.4.17] — 2026-04-03
 
 ### Fixed

@@ -41,7 +41,7 @@ for home_dir in /home/*/; do
         [[ -z "$php_ver" ]] && php_ver="8.4"
 
         crontab -u "$u" -l 2>/dev/null | sed \
-            "s|cd ${home} && /usr/bin/php[0-9.]* /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php >> ${home}/logs/deploy.log 2>&1|cd ${home} \&\& { /usr/bin/php${php_ver} /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php >> ${home}/logs/deploy.log 2>\&1 || sudo /usr/local/bin/cipi-app-notify ${u} deploy \$? ${home}/logs/deploy.log; }|" \
+            "s#cd ${home} && /usr/bin/php[0-9.]* /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php >> ${home}/logs/deploy.log 2>&1#cd ${home} \&\& { /usr/bin/php${php_ver} /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php >> ${home}/logs/deploy.log 2>\&1 || sudo /usr/local/bin/cipi-app-notify ${u} deploy \$? ${home}/logs/deploy.log; }#" \
             | crontab -u "$u" -
 
         echo "  Updated crontab for ${u}"
