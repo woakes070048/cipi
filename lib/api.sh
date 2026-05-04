@@ -41,6 +41,46 @@ _api_timeout() {
     fi
 }
 
+# Apply SQLite pragmas needed by the panel API:
+# - WAL: many concurrent readers + 1 writer (FPM children + cipi-queue + artisan)
+# - busy_timeout: 15s instead of Laravel's default ~5s; eliminates the
+#   "database is locked" 500s under bursty traffic without user-visible delay
+# - synchronous=NORMAL: pairs with WAL; durable on commit, faster on writes
+# Idempotent: PRAGMAs are settings, not schema changes.
+_api_apply_sqlite_pragmas() {
+    local db; db=$(_api_panel_sqlite_path 2>/dev/null) || return 0
+    [[ -z "$db" || ! -f "$db" ]] && return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    sudo -u www-data sqlite3 "$db" <<'SQL' 2>/dev/null || true
+PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+PRAGMA busy_timeout=15000;
+SQL
+}
+
+# Force LOG_STACK=single,stderr so:
+# - "single" keeps the human-readable laravel.log
+# - "stderr" mirrors errors to FPM stdout/stderr → caught by
+#   catch_workers_output and visible in journalctl when a worker is killed
+#   mid-request (the case where laravel.log alone is not enough).
+# Idempotent: replaces the line in .env or appends it.
+_api_ensure_log_stack_env() {
+    local envf="${CIPI_API_ROOT}/.env"
+    [[ -f "$envf" ]] || return 0
+    if grep -q '^LOG_STACK=' "$envf" 2>/dev/null; then
+        sed -i 's|^LOG_STACK=.*|LOG_STACK=single,stderr|' "$envf"
+    else
+        echo 'LOG_STACK=single,stderr' >> "$envf"
+    fi
+    if grep -q '^LOG_CHANNEL=' "$envf" 2>/dev/null; then
+        sed -i 's|^LOG_CHANNEL=.*|LOG_CHANNEL=stack|' "$envf"
+    else
+        echo 'LOG_CHANNEL=stack' >> "$envf"
+    fi
+    chown www-data:www-data "$envf" 2>/dev/null || true
+    chmod 640 "$envf" 2>/dev/null || true
+}
+
 # PsySH (artisan tinker) writes under www-data's home; ensure the dir exists to avoid slow/failed first runs.
 _api_ensure_psysh_home() {
     local h
@@ -201,6 +241,8 @@ api_setup() {
             && sed -i "s|^CIPI_APPS_JSON=.*|CIPI_APPS_JSON=${CIPI_CONFIG}/apps-public.json|" "${CIPI_API_ROOT}/.env" \
             || echo "CIPI_APPS_JSON=${CIPI_CONFIG}/apps-public.json" >> "${CIPI_API_ROOT}/.env"
     fi
+    _api_ensure_log_stack_env
+    _api_apply_sqlite_pragmas
 
     # PHP-FPM pool for API
     step "PHP-FPM pool..."
@@ -262,6 +304,16 @@ _api_ensure_laravel_app() {
         sed -i "s|^APP_ENV=.*|APP_ENV=production|" /tmp/cipi-api-build/.env
         sed -i "s|^APP_DEBUG=.*|APP_DEBUG=false|" /tmp/cipi-api-build/.env
         sed -i "s|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=database|" /tmp/cipi-api-build/.env
+        if grep -q '^LOG_CHANNEL=' /tmp/cipi-api-build/.env 2>/dev/null; then
+            sed -i 's|^LOG_CHANNEL=.*|LOG_CHANNEL=stack|' /tmp/cipi-api-build/.env
+        else
+            echo 'LOG_CHANNEL=stack' >> /tmp/cipi-api-build/.env
+        fi
+        if grep -q '^LOG_STACK=' /tmp/cipi-api-build/.env 2>/dev/null; then
+            sed -i 's|^LOG_STACK=.*|LOG_STACK=single,stderr|' /tmp/cipi-api-build/.env
+        else
+            echo 'LOG_STACK=single,stderr' >> /tmp/cipi-api-build/.env
+        fi
         grep -q '^CIPI_APPS_JSON=' /tmp/cipi-api-build/.env 2>/dev/null \
             && sed -i "s|^CIPI_APPS_JSON=.*|CIPI_APPS_JSON=${CIPI_CONFIG}/apps-public.json|" /tmp/cipi-api-build/.env \
             || echo "CIPI_APPS_JSON=${CIPI_CONFIG}/apps-public.json" >> /tmp/cipi-api-build/.env
@@ -314,6 +366,8 @@ _api_patch_user_model() {
 }
 
 _api_setup_queue_worker() {
+    # --max-time/--max-jobs recycle the worker periodically: PHP long-running
+    # processes leak memory; without recycling, the queue degrades silently.
     cat > /etc/systemd/system/cipi-queue.service <<SYSTEMD
 [Unit]
 Description=Cipi API Queue Worker
@@ -323,7 +377,7 @@ After=network.target
 User=www-data
 Group=www-data
 WorkingDirectory=${CIPI_API_ROOT}
-ExecStart=/usr/bin/php artisan queue:work database --sleep=3 --tries=1 --timeout=600 --queue=default
+ExecStart=/usr/bin/php artisan queue:work database --sleep=3 --tries=1 --timeout=600 --queue=default --max-time=3600 --max-jobs=200 --rest=1
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/cipi-queue.log
@@ -338,6 +392,16 @@ SYSTEMD
 }
 
 _api_create_fpm_pool() {
+    # Sized for a panel API that fans out to long sync ops (deploy, artisan,
+    # MCP, sudo cipi …). Old defaults (max_children=10, no slowlog) led to
+    # silent 500s when workers were SIGKILL'd at request_terminate_timeout
+    # before Laravel could write to laravel.log.
+    #
+    # Key additions vs. <4.5.0:
+    # - bigger pool + listen.backlog so bursts queue at FPM, not at the kernel
+    # - slowlog: PHP stack trace 30s before the kill, so we know what hung
+    # - catch_workers_output: child stderr (incl. fatals) lands in the FPM log
+    # - error_log moved out of /var/log/nginx (logically belongs to the API)
     cat > /etc/php/8.5/fpm/pool.d/cipi-api.conf <<POOL
 [cipi-api]
 user = www-data
@@ -346,21 +410,34 @@ listen = /run/php/cipi-api.sock
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0660
+listen.backlog = 1024
 pm = dynamic
-pm.max_children = 10
-pm.start_servers = 2
-pm.min_spare_servers = 1
-pm.max_spare_servers = 4
-pm.max_requests = 500
+pm.max_children = 25
+pm.start_servers = 4
+pm.min_spare_servers = 2
+pm.max_spare_servers = 8
+pm.max_requests = 200
+pm.process_idle_timeout = 60s
+pm.status_path = /cipi-api-fpm-status
 request_terminate_timeout = 300
+request_slowlog_timeout = 30
+slowlog = /var/log/cipi-api-fpm-slow.log
+catch_workers_output = yes
+decorate_workers_output = no
 php_admin_value[open_basedir] = ${CIPI_API_ROOT}/:/tmp/:/etc/cipi/:/proc/
 php_admin_value[upload_max_filesize] = 64M
 php_admin_value[post_max_size] = 64M
 php_admin_value[memory_limit] = 256M
 php_admin_value[max_execution_time] = 300
-php_admin_value[error_log] = /var/log/nginx/cipi-api-php-error.log
+php_admin_value[error_log] = /var/log/cipi-api-php-error.log
 php_admin_flag[log_errors] = on
 POOL
+    # slowlog/error_log files: must exist + be writable by www-data, and be
+    # part of cipi log rotation (handled in lib/migrations/4.5.0.sh).
+    : > /var/log/cipi-api-fpm-slow.log 2>/dev/null || true
+    : > /var/log/cipi-api-php-error.log 2>/dev/null || true
+    chown www-data:adm /var/log/cipi-api-fpm-slow.log /var/log/cipi-api-php-error.log 2>/dev/null || true
+    chmod 640 /var/log/cipi-api-fpm-slow.log /var/log/cipi-api-php-error.log 2>/dev/null || true
 }
 
 _api_create_nginx_vhost() {
@@ -381,6 +458,16 @@ server {
         alias ${CIPI_API_ROOT}/public/api-docs;
         try_files \$uri =404;
     }
+    # FPM status page (used by 'cipi api status' to report active/idle
+    # workers, queue depth, slow requests). Local-only.
+    location = /cipi-api-fpm-status {
+        allow 127.0.0.1;
+        allow ::1;
+        deny all;
+        fastcgi_pass unix:/run/php/cipi-api.sock;
+        fastcgi_param SCRIPT_FILENAME \$fastcgi_script_name;
+        include fastcgi_params;
+    }
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
     }
@@ -390,6 +477,12 @@ server {
         include fastcgi_params;
         fastcgi_hide_header X-Powered-By;
         fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_connect_timeout 60;
+        fastcgi_buffers 16 32k;
+        fastcgi_buffer_size 64k;
+        fastcgi_busy_buffers_size 128k;
+        fastcgi_intercept_errors off;
     }
     location ~ /\.(?!well-known) { deny all; }
     error_page 404 /index.php;
@@ -431,6 +524,8 @@ api_update() {
     chown -R www-data:www-data "${CIPI_API_ROOT}" 2>/dev/null || true
     (cd "${CIPI_API_ROOT}" && sudo -u www-data php artisan vendor:publish --tag=cipi-assets --force 2>/dev/null) || true
     (cd "${CIPI_API_ROOT}" && sudo -u www-data php artisan migrate --force 2>/dev/null) || true
+    _api_ensure_log_stack_env
+    _api_apply_sqlite_pragmas
     success "Assets published, migrations applied"
 
     # Restart services
@@ -501,6 +596,11 @@ api_upgrade() {
         sed -i "s|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=database|" /tmp/cipi-api-build/.env
         (cd /tmp/cipi-api-build && php artisan key:generate --force 2>/dev/null) || true
     fi
+    if grep -q '^LOG_STACK=' /tmp/cipi-api-build/.env 2>/dev/null; then
+        sed -i 's|^LOG_STACK=.*|LOG_STACK=single,stderr|' /tmp/cipi-api-build/.env
+    else
+        echo 'LOG_STACK=single,stderr' >> /tmp/cipi-api-build/.env
+    fi
     success ".env restored"
 
     # 5. Restore database
@@ -525,6 +625,8 @@ api_upgrade() {
     mv "${CIPI_API_ROOT}" "${CIPI_API_ROOT}.old" 2>/dev/null || true
     mv /tmp/cipi-api-build "${CIPI_API_ROOT}"
     chown -R www-data:www-data "${CIPI_API_ROOT}"
+    _api_ensure_log_stack_env
+    _api_apply_sqlite_pragmas
     success "App replaced"
 
     # 8. Restart services
@@ -578,8 +680,39 @@ api_status() {
     pending=$(_api_pending_jobs_count)
     echo -e "  Jobs:       ${CYAN}${pending} pending${NC}"
 
+    _api_show_fpm_summary
+
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
+}
+
+# Read /cipi-api-fpm-status (local) via the unix socket and extract a 1-line
+# summary: active/idle workers and listen queue. Falls back gracefully when
+# the endpoint is not configured (older installs pre-4.5.0).
+_api_show_fpm_summary() {
+    command -v curl >/dev/null 2>&1 || return 0
+    local domain status active idle queue slow_count
+    domain=$(vault_read api.json | jq -r '.domain' 2>/dev/null)
+    [[ -z "$domain" || "$domain" == "null" ]] && return 0
+    status=$(_api_timeout 5 curl -sk --max-time 4 \
+        --resolve "${domain}:443:127.0.0.1" \
+        --resolve "${domain}:80:127.0.0.1" \
+        "https://${domain}/cipi-api-fpm-status" 2>/dev/null) || status=""
+    [[ -z "$status" ]] && status=$(_api_timeout 5 curl -s --max-time 4 \
+        --resolve "${domain}:80:127.0.0.1" \
+        "http://${domain}/cipi-api-fpm-status" 2>/dev/null) || true
+    if [[ -n "$status" ]] && echo "$status" | grep -q '^pool:'; then
+        active=$(echo "$status" | awk -F: '/^active processes:/   {gsub(/ /,"",$2); print $2}')
+        idle=$(echo   "$status" | awk -F: '/^idle processes:/     {gsub(/ /,"",$2); print $2}')
+        queue=$(echo  "$status" | awk -F: '/^listen queue:/       {gsub(/ /,"",$2); print $2}')
+        echo -e "  Workers:    ${CYAN}${active:-?} active · ${idle:-?} idle · queue ${queue:-0}${NC}"
+    fi
+    if [[ -f /var/log/cipi-api-fpm-slow.log ]]; then
+        slow_count=$(grep -c '^\[' /var/log/cipi-api-fpm-slow.log 2>/dev/null || echo 0)
+        if [[ -n "$slow_count" && "$slow_count" -gt 0 ]]; then
+            echo -e "  Slowlog:    ${YELLOW}${slow_count} slow request(s)${NC} ${DIM}/var/log/cipi-api-fpm-slow.log${NC}"
+        fi
+    fi
 }
 
 _api_show_versions() {

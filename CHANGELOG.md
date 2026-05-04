@@ -4,6 +4,27 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.5.0] — 2026-05-04
+
+### Fixed
+
+- **Panel API: silent 500 under load (no log written)** — Long sync calls in the API (deploy, artisan, MCP, `sudo cipi …`) saturated a too-small PHP-FPM pool (`pm.max_children = 10`); when `request_terminate_timeout = 300` fired, FPM `SIGKILL`'d workers mid-request, so Laravel's exception handler never ran and **nothing reached `storage/logs/laravel.log` or `cipi-api-php-error.log`** — the only trace was in `journalctl -u php<ver>-fpm`. Fixed by enlarging the pool, adding a slowlog (PHP backtrace 30s before the kill), and capturing child stderr in the FPM log.
+- **Panel API: `database is locked` 500s** — SQLite default `journal_mode=DELETE` plus Laravel's ~5s `busy_timeout` caused contention between the `cipi-queue` worker and FPM children under burst traffic. Switched the panel SQLite DB to **`WAL` + `synchronous=NORMAL` + `busy_timeout=15000`** (set on every `cipi api setup|update|upgrade` and on existing servers via migration 4.5.0).
+- **`cipi-queue` memory drift** — The systemd worker ran `queue:work` indefinitely; long-lived PHP processes leak memory. Now restarted automatically every hour or 200 jobs (`--max-time=3600 --max-jobs=200 --rest=1`).
+
+### Changed
+
+- **PHP-FPM pool for the Panel API** — `_api_create_fpm_pool` (in `lib/api.sh`) and `lib/migrations/4.5.0.sh` now write a tuned pool: `pm.max_children = 25`, `pm.start_servers = 4`, `pm.min_spare_servers = 2`, `pm.max_spare_servers = 8`, `pm.max_requests = 200`, `pm.process_idle_timeout = 60s`, `listen.backlog = 1024`. Added **`request_slowlog_timeout = 30`** with `slowlog = /var/log/cipi-api-fpm-slow.log` and **`catch_workers_output = yes`** so child stderr/fatals land in the FPM log even when a worker dies before Laravel can log. The PHP child `error_log` moved from `/var/log/nginx/cipi-api-php-error.log` (logically Nginx's) to **`/var/log/cipi-api-php-error.log`**, registered in a new `logrotate.d/cipi-api-logs`.
+- **Nginx vhost for the Panel API** — `_api_create_nginx_vhost` now sets explicit FastCGI buffers (`fastcgi_buffers 16 32k`, `fastcgi_buffer_size 64k`, `fastcgi_busy_buffers_size 128k`) and adds a local-only `location = /cipi-api-fpm-status` (`allow 127.0.0.1`) used by `cipi api status` to read pool stats.
+- **Laravel logging defaults** — `LOG_CHANNEL=stack` and `LOG_STACK=single,stderr` are now forced in `/opt/cipi/api/.env` on install/update/upgrade/migration, mirroring errors to FPM stdout/stderr so they survive a `SIGKILL`'d worker.
+- **`cipi api status`** — Now also prints active/idle FPM workers, listen queue depth, and slowlog hits (when present), so operators can see pool saturation at a glance.
+
+### Added
+
+- **`lib/migrations/4.5.0.sh`** — Retrofits installed servers (auto-detects the PHP version actively running the API pool) by rewriting `cipi-api.conf`, `cipi-queue.service`, the Nginx vhost, `.env` log channels, the SQLite pragmas, and the logrotate config. Runs `certbot --nginx --reinstall` when an SSL cert exists, so the redirect/443 block survives the vhost rewrite. Idempotent and safe to re-run.
+
+---
+
 ## [4.4.19] — 2026-04-16
 
 ### Fixed
