@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.5.8] — 2026-06-02
+
+### Added
+
+- **App suspend / unsuspend** — take any app (Laravel or custom) offline without deleting it: **`cipi app suspend <app>`** replaces the app's Nginx vhost with a generic static suspension page served as **HTTP 503**, and **`cipi app unsuspend <app>`** restores the normal vhost. State lives in `apps.json` (`suspended`), and `_create_nginx_vhost` renders the suspended vhost whenever the flag is set, so suspension **survives vhost regeneration** (alias add/remove, PHP edit) and `certbot install` clones it into the `:443` server block — **HTTPS is suspended too**. The ACME challenge path (`/.well-known/acme-challenge/`) is kept public so SSL issuance/renewal keeps working while a site is offline, and toggling re-runs `certbot install` (no new issuance, no rate-limit risk) so HTTPS is never dropped. The offline page is a shared, self-contained static page at `/var/www/cipi-suspended/index.html`, created on demand on first suspend; `no-store` cache headers and `noindex,nofollow` keep suspended pages out of caches and search engines. The suspended state is shown in `cipi app show` (Status), `cipi app list` (yellow dot + `(suspended)`) and `cipi domains` (a yellow `⏸ suspended` marker per row plus a count in the footer), and is cleared automatically when the app is deleted. This unblocks the **WHMCS module's Suspend/Unsuspend** lifecycle, which previously had no Cipi endpoint to call (see [cipi-sh/whmcs](https://github.com/cipi-sh/whmcs)).
+
+---
+
 ## [4.5.7] — 2026-06-02
 
 ### Fixed

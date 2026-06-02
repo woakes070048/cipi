@@ -64,6 +64,8 @@ show_help() {
     echo -e "    ${CYAN}cipi app show <app>${NC}                 App details"
     echo -e "    ${CYAN}cipi app edit <app> [--php=X.Y]${NC}     Edit app"
     echo -e "    ${CYAN}cipi app delete <app>${NC}               Delete app"
+    echo -e "    ${CYAN}cipi app suspend <app>${NC}              Take app offline (503 page)"
+    echo -e "    ${CYAN}cipi app unsuspend <app>${NC}            Bring app back online"
     echo -e "    ${CYAN}cipi app env <app>${NC}                  Edit .env"
     echo -e "    ${CYAN}cipi app logs <app> [--type=T]${NC}      Tail logs"
     echo -e "    ${CYAN}cipi app tinker <app>${NC}               Laravel Tinker"

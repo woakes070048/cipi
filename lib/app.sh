@@ -434,11 +434,13 @@ app_list() {
     fi
     printf "\n${BOLD}%-14s %-28s %-6s %s${NC}\n" "APP" "DOMAIN" "PHP" "CREATED"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "$_aj" | jq -r 'to_entries[]|"\(.key)\t\(.value.domain)\t\(.value.php)\t\(.value.created_at)"' \
-        | while IFS=$'\t' read -r a d p c; do
+    echo "$_aj" | jq -r 'to_entries[]|"\(.key)\t\(.value.domain)\t\(.value.php)\t\(.value.created_at)\t\(.value.suspended // "false")"' \
+        | while IFS=$'\t' read -r a d p c s; do
         local st="${GREEN}●${NC}"
         systemctl is-active --quiet "php${p}-fpm" 2>/dev/null || st="${RED}●${NC}"
-        printf "  ${st} %-12s %-28s %-6s %s\n" "$a" "$d" "$p" "${c:0:10}"
+        [[ "$s" == "true" ]] && st="${YELLOW}●${NC}"
+        local suffix=""; [[ "$s" == "true" ]] && suffix=" ${YELLOW}(suspended)${NC}"
+        printf "  ${st} %-12s %-28s %-6s %s${suffix}\n" "$a" "$d" "$p" "${c:0:10}"
     done; echo ""
 }
 
@@ -468,6 +470,9 @@ app_show() {
     printf "  %-14s ${CYAN}%s${NC}\n" "Branch" "$b"
     printf "  %-14s ${CYAN}%s${NC}\n" "PHP" "$p"
     printf "  %-14s ${CYAN}%s${NC}\n" "Created" "$ca"
+    if [[ "$(app_get "$app" suspended)" == "true" ]]; then
+        printf "  %-14s ${YELLOW}%s${NC}\n" "Status" "suspended (offline)"
+    fi
     if [[ "$(app_get "$app" basic_auth)" == "true" ]]; then
         local ba_users; ba_users=$(cut -d: -f1 "/etc/nginx/cipi-basicauth/${app}.htpasswd" 2>/dev/null | paste -sd, -)
         printf "  %-14s ${GREEN}%s${NC}\n" "Basic Auth" "enabled${ba_users:+ (${ba_users})}"
@@ -729,7 +734,7 @@ domains_list() {
     # non-empty so `read` (tab is IFS whitespace) cannot collapse blank columns.
     # LAST DEPLOY is derived in bash from the mtime of the app's `current`
     # symlink (Deployer atomically re-points it on every successful deploy).
-    while IFS=$'\t' read -r dom app kind type php docroot branch repoflag repotext; do
+    while IFS=$'\t' read -r dom app kind type php docroot branch repoflag repotext susp; do
         [[ -z "$dom" ]] && continue
         total=$((total + 1))
 
@@ -762,8 +767,11 @@ domains_list() {
             repo_disp="${DIM}${repotext}${NC}"
         fi
 
-        printf "  %-26s %-10s %-7s %-7s %-4s %-11s %-12s %-12s %b    %b\n" \
-            "$dom" "$app" "$kind" "$type" "$php" "$docroot" "$branch" "$deploy" "$ssl" "$repo_disp"
+        local susp_disp=""
+        [[ "$susp" == "true" ]] && susp_disp="  ${YELLOW}⏸ suspended${NC}"
+
+        printf "  %-26s %-10s %-7s %-7s %-4s %-11s %-12s %-12s %b    %b%b\n" \
+            "$dom" "$app" "$kind" "$type" "$php" "$docroot" "$branch" "$deploy" "$ssl" "$repo_disp" "$susp_disp"
     done < <(echo "$_aj" | jq -r '
         to_entries[]
         | .key as $app | .value as $v
@@ -773,14 +781,17 @@ domains_list() {
         | ($v.repository // "") as $repo
         | (if ($repo | length) > 0 then "real" elif $v.custom == true then "sftp" else "none" end) as $repoflag
         | (if ($repo | length) > 0 then $repo elif $v.custom == true then "(SFTP only)" else "-" end) as $repotext
+        | (if $v.suspended == "true" then "true" else "false" end) as $susp
         | ([{d: $v.domain, t: "primary"}]
            + (($v.aliases // []) | map({d: ., t: "alias"})))[]
-        | [.d, $app, .t, $type, ($v.php // "?"), $docroot, $branch, $repoflag, $repotext] | @tsv
+        | [.d, $app, .t, $type, ($v.php // "?"), $docroot, $branch, $repoflag, $repotext, $susp] | @tsv
     ' | sort -t$'\t' -k1,1)
 
+    local susp_count; susp_count=$(echo "$_aj" | jq '[.[] | select(.suspended == "true")] | length')
+    local susp_note=""; [[ "$susp_count" -gt 0 ]] && susp_note=" — ${susp_count} suspended"
     echo ""
-    printf "  ${DIM}%d domain(s) across %d app(s) — %d with SSL${NC}\n\n" \
-        "$total" "$(echo "$_aj" | jq 'length')" "$secured"
+    printf "  ${DIM}%d domain(s) across %d app(s) — %d with SSL%s${NC}\n\n" \
+        "$total" "$(echo "$_aj" | jq 'length')" "$secured" "$susp_note"
 }
 
 domains_command() {
@@ -820,6 +831,81 @@ php_admin_flag[log_errors] = on
 EOF
 }
 
+# ── SUSPEND (offline page) ────────────────────────────────────
+# `cipi app suspend <app>` takes a site offline by replacing its vhost with a
+# generic static suspension page served with HTTP 503. State lives in apps.json
+# ("suspended": "true") and _create_nginx_vhost renders the suspended vhost when
+# the flag is set, so suspension survives vhost regeneration (alias/PHP edits)
+# and certbot clones it into the :443 block — HTTPS is covered too. The page is
+# shared by all apps and created on demand below.
+readonly SUSPENDED_DIR="/var/www/cipi-suspended"
+
+# Create (once) the generic static suspension page served to visitors of a
+# suspended app. Idempotent — only writes the file when missing.
+_ensure_suspended_page() {
+    mkdir -p "$SUSPENDED_DIR"
+    if [[ ! -f "${SUSPENDED_DIR}/index.html" ]]; then
+        cat > "${SUSPENDED_DIR}/index.html" <<'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Service Temporarily Unavailable</title>
+    <style>
+        :root { color-scheme: light dark; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 24px;
+        }
+        .card {
+            max-width: 520px;
+            width: 100%;
+            text-align: center;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 48px 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        }
+        .badge {
+            display: inline-block;
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #fbbf24;
+            border: 1px solid #fbbf24;
+            border-radius: 999px;
+            padding: 4px 14px;
+            margin-bottom: 24px;
+        }
+        h1 { font-size: 26px; margin: 0 0 12px; color: #f8fafc; }
+        p { font-size: 16px; line-height: 1.6; margin: 0; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <span class="badge">Suspended</span>
+        <h1>This site is temporarily unavailable</h1>
+        <p>The service for this website has been suspended. Please contact the site administrator or your hosting provider for more information.</p>
+    </div>
+</body>
+</html>
+HTML
+        chmod 644 "${SUSPENDED_DIR}/index.html"
+    fi
+    chmod 755 "$SUSPENDED_DIR"
+}
+
 _create_nginx_vhost() {
     local app="$1" domain="$2" v="$3"
     local names aliases_raw vhost_type docroot
@@ -840,6 +926,37 @@ _create_nginx_vhost() {
         fi
     fi
     names=$(echo -e "${domain}\n${aliases_raw}" | grep -v '^[[:space:]]*$' | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')
+
+    # Suspended app (cipi app suspend <app>): override the vhost with a generic
+    # static page returned as HTTP 503 for every request. The ACME challenge path
+    # is kept reachable so SSL issuance/renewal keeps working while suspended.
+    # certbot clones these blocks into the :443 server, so HTTPS is suspended too.
+    if [[ "$(app_get "$app" suspended)" == "true" ]]; then
+        _ensure_suspended_page
+        cat > "/etc/nginx/sites-available/${app}" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${names};
+    root ${SUSPENDED_DIR};
+    access_log /home/${app}/logs/nginx-access.log;
+    error_log /home/${app}/logs/nginx-error.log;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        try_files \$uri =404;
+    }
+    location / {
+        return 503;
+    }
+    error_page 503 /index.html;
+    location = /index.html { internal; }
+}
+EOF
+        return 0
+    fi
 
     # HTTP basic auth (cipi basicauth enable <app>). Injected into the app's
     # location blocks — NOT at server level — so that certbot's auto-generated
@@ -1177,6 +1294,60 @@ basicauth_command() {
     esac
 }
 
+# ── SUSPEND / UNSUSPEND ───────────────────────────────────────
+
+app_suspend() {
+    local app="${1:-}"
+    [[ -z "$app" ]] && { error "Usage: cipi app suspend <app>"; exit 1; }
+    app_exists "$app" || { error "App '$app' not found"; exit 1; }
+
+    if [[ "$(app_get "$app" suspended)" == "true" ]]; then
+        info "App '${app}' is already suspended"; return
+    fi
+
+    app_set "$app" suspended "true"
+
+    step "Building suspension page..."
+    _ensure_suspended_page
+
+    step "Updating Nginx vhost..."
+    _create_nginx_vhost "$app" "$(app_get "$app" domain)" "$(app_get "$app" php)"
+    _nginx_reapply_ssl "$app"
+    success "App '${app}' suspended — serving offline page (HTTP 503)"
+
+    log_action "APP SUSPENDED: $app"
+    cipi_notify \
+        "Cipi app suspended: ${app} on $(hostname)" \
+        "An app was suspended and is now serving the offline page.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+    echo ""
+    echo -e "  ${BOLD}Status${NC}  ${YELLOW}suspended${NC} for ${CYAN}$(app_get "$app" domain)${NC}"
+    echo -e "  ${DIM}Restore with: cipi app unsuspend ${app}${NC}"
+    echo ""
+}
+
+app_unsuspend() {
+    local app="${1:-}"
+    [[ -z "$app" ]] && { error "Usage: cipi app unsuspend <app>"; exit 1; }
+    app_exists "$app" || { error "App '$app' not found"; exit 1; }
+
+    if [[ "$(app_get "$app" suspended)" != "true" ]]; then
+        info "App '${app}' is not suspended"; return
+    fi
+
+    app_set "$app" suspended "false"
+
+    step "Restoring Nginx vhost..."
+    _create_nginx_vhost "$app" "$(app_get "$app" domain)" "$(app_get "$app" php)"
+    _nginx_reapply_ssl "$app"
+    success "App '${app}' is back online"
+
+    log_action "APP UNSUSPENDED: $app"
+    cipi_notify \
+        "Cipi app unsuspended: ${app} on $(hostname)" \
+        "An app was unsuspended and is back online.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+}
+
 # ── RESET PASSWORDS ───────────────────────────────────────────
 
 app_reset_password() {
@@ -1249,9 +1420,11 @@ app_command() {
         logs)    app_logs "$@" ;;
         tinker)  app_tinker "$@" ;;
         artisan) app_artisan "$@" ;;
+        suspend)   app_suspend "$@" ;;
+        unsuspend) app_unsuspend "$@" ;;
         reset-password)    app_reset_password "$@" ;;
         reset-db-password) app_reset_db_password "$@" ;;
-        *) error "Unknown: $sub"; echo "Use: create list show edit delete env logs tinker artisan reset-password reset-db-password"; exit 1 ;;
+        *) error "Unknown: $sub"; echo "Use: create list show edit delete env logs tinker artisan suspend unsuspend reset-password reset-db-password"; exit 1 ;;
     esac
 }
 
