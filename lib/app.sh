@@ -157,6 +157,7 @@ HTML
     if [[ "$app_type" == "custom" ]]; then
         cat > "${home}/.bashrc" <<BASH
 export PATH="/usr/local/bin:\$PATH"
+alias ll='ls -al'
 alias php='/usr/bin/php${php_ver}'
 alias composer='/usr/bin/php${php_ver} /usr/local/bin/composer'
 alias deploy='/usr/bin/php${php_ver} /usr/local/bin/dep deploy -f ${home}/.deployer/deploy.php'
@@ -165,6 +166,7 @@ BASH
     else
         cat > "${home}/.bashrc" <<BASH
 export PATH="/usr/local/bin:\$PATH"
+alias ll='ls -al'
 alias php='/usr/bin/php${php_ver}'
 alias artisan='php ${home}/current/artisan'
 alias composer='/usr/bin/php${php_ver} /usr/local/bin/composer'
@@ -703,6 +705,90 @@ alias_list() {
     vault_read apps.json | jq -r --arg a "$app" '.[$a].aliases // [] | .[]' | while read -r a; do
         echo -e "  Alias:   ${CYAN}${a}${NC}"
     done; echo ""
+}
+
+# ── DOMAINS (global mapping) ──────────────────────────────────
+
+# Show every domain and alias across all apps in one table, mapping each name
+# to its owning app, kind (primary/alias), app type (Laravel/custom), PHP
+# version, web docroot, SSL status (Let's Encrypt live cert for that exact
+# name) and the Git repository (or "(SFTP only)" for custom apps with no repo).
+domains_list() {
+    local _aj; _aj=$(vault_read apps.json)
+    if [[ -z "$_aj" || $(echo "$_aj" | jq 'length') -eq 0 ]]; then
+        info "No apps. Create one: cipi app create"; return
+    fi
+
+    printf "\n${BOLD}%-26s %-10s %-7s %-7s %-4s %-11s %-12s %-12s %-4s %s${NC}\n" \
+        "DOMAIN" "APP" "KIND" "TYPE" "PHP" "DOCROOT" "BRANCH" "LAST DEPLOY" "SSL" "REPOSITORY"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    local total=0 secured=0
+    # Per row: domain \t app \t kind \t type \t php \t docroot \t branch \t repoflag \t repotext
+    # (primary first, then each alias), sorted by domain. Every field is emitted
+    # non-empty so `read` (tab is IFS whitespace) cannot collapse blank columns.
+    # LAST DEPLOY is derived in bash from the mtime of the app's `current`
+    # symlink (Deployer atomically re-points it on every successful deploy).
+    while IFS=$'\t' read -r dom app kind type php docroot branch repoflag repotext; do
+        [[ -z "$dom" ]] && continue
+        total=$((total + 1))
+
+        local ssl="${RED}✗${NC}"
+        if [[ -d "/etc/letsencrypt/live/${dom}" ]]; then
+            ssl="${GREEN}✓${NC}"; secured=$((secured + 1))
+        fi
+
+        local deploy="-" cur="/home/${app}/current"
+        if [[ -L "$cur" ]]; then
+            local ep; ep=$(stat -c %Y "$cur" 2>/dev/null || echo "")
+            if [[ -n "$ep" ]]; then
+                local now diff; now=$(date +%s); diff=$(( now - ep ))
+                (( diff < 0 )) && diff=0
+                if   (( diff < 60 ));       then deploy="just now"
+                elif (( diff < 3600 ));     then deploy="$(( diff / 60 ))m ago"
+                elif (( diff < 86400 ));    then deploy="$(( diff / 3600 ))h ago"
+                elif (( diff < 604800 ));   then deploy="$(( diff / 86400 ))d ago"
+                elif (( diff < 2592000 ));  then deploy="$(( diff / 604800 ))w ago"
+                elif (( diff < 31536000 )); then deploy="$(( diff / 2592000 ))mo ago"
+                else                             deploy="$(( diff / 31536000 ))y ago"
+                fi
+            fi
+        fi
+
+        local repo_disp
+        if [[ "$repoflag" == "real" ]]; then
+            repo_disp="${CYAN}${repotext}${NC}"
+        else
+            repo_disp="${DIM}${repotext}${NC}"
+        fi
+
+        printf "  %-26s %-10s %-7s %-7s %-4s %-11s %-12s %-12s %b    %b\n" \
+            "$dom" "$app" "$kind" "$type" "$php" "$docroot" "$branch" "$deploy" "$ssl" "$repo_disp"
+    done < <(echo "$_aj" | jq -r '
+        to_entries[]
+        | .key as $app | .value as $v
+        | (if $v.custom == true then "Custom" else "Laravel" end) as $type
+        | (if $v.custom == true then ("/" + ($v.docroot // "")) else "public" end) as $docroot
+        | (if (($v.branch // "") | length) > 0 then $v.branch else "-" end) as $branch
+        | ($v.repository // "") as $repo
+        | (if ($repo | length) > 0 then "real" elif $v.custom == true then "sftp" else "none" end) as $repoflag
+        | (if ($repo | length) > 0 then $repo elif $v.custom == true then "(SFTP only)" else "-" end) as $repotext
+        | ([{d: $v.domain, t: "primary"}]
+           + (($v.aliases // []) | map({d: ., t: "alias"})))[]
+        | [.d, $app, .t, $type, ($v.php // "?"), $docroot, $branch, $repoflag, $repotext] | @tsv
+    ' | sort -t$'\t' -k1,1)
+
+    echo ""
+    printf "  ${DIM}%d domain(s) across %d app(s) — %d with SSL${NC}\n\n" \
+        "$total" "$(echo "$_aj" | jq 'length')" "$secured"
+}
+
+domains_command() {
+    local sub="${1:-}"
+    case "$sub" in
+        ""|list|ls) domains_list ;;
+        *) error "Unknown: $sub"; echo "Usage: cipi domains"; exit 1 ;;
+    esac
 }
 
 # ── HELPERS ───────────────────────────────────────────────────

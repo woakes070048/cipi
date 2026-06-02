@@ -72,6 +72,7 @@ show_help() {
     echo -e "    ${CYAN}cipi app reset-db-password <app>${NC}    Reset app DB password"
     echo ""
     echo -e "  ${BOLD}${CYAN}DOMAINS${NC}"
+    echo -e "    ${CYAN}cipi domains${NC}                         Map all domains/aliases to apps"
     echo -e "    ${CYAN}cipi alias add <app> <domain>${NC}       Add alias"
     echo -e "    ${CYAN}cipi alias remove <app> <domain>${NC}    Remove alias"
     echo -e "    ${CYAN}cipi alias list <app>${NC}               List aliases"
@@ -225,6 +226,7 @@ main() {
         status)     require_root; show_status ;;
         app)        require_root; source "${CIPI_LIB}/app.sh";         app_command "$@" ;;
         alias)      require_root; source "${CIPI_LIB}/app.sh";         alias_command "$@" ;;
+        domains)    require_root; source "${CIPI_LIB}/app.sh";         domains_command "$@" ;;
         auth)       require_root; source "${CIPI_LIB}/app.sh";         auth_command "$@" ;;
         basicauth)  require_root; source "${CIPI_LIB}/app.sh";         basicauth_command "$@" ;;
         deploy)     require_root; source "${CIPI_LIB}/deploy.sh";      deploy_command "$@" ;;

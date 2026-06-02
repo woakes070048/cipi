@@ -4,6 +4,15 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.5.5] — 2026-06-02
+
+### Added
+
+- **`cipi domains` — global domain/alias map** — a new top-level command that lists **every** domain and alias across all apps in a single table: **DOMAIN**, owning **APP**, **KIND** (`primary`/`alias`), **TYPE** (`Laravel`/`Custom`), **PHP** version, **DOCROOT** (`public` for Laravel, `/<docroot>` for custom), Git **BRANCH**, **LAST DEPLOY** as a human-relative age (`just now`, `10m ago`, `2h ago`, `3d ago`, `2w ago`, `2mo ago`, `2y ago` — derived from the mtime of the app's `current` symlink, which Deployer atomically re-points on every successful deploy; `-` when never deployed), per-name **SSL** status (`✓`/`✗`, detected from `/etc/letsencrypt/live/<domain>`), and the Git **REPOSITORY** (or `(SFTP only)` for custom apps with no repo). Rows are sorted by domain and a footer summarises totals (domains, apps, certs), making it easy to audit the whole mapping or spot a domain that's still missing a certificate — complements the per-app `cipi alias list <app>`.
+- **`ll` shell alias for app users** — the `.bashrc` generated for every new app user (Laravel and custom) now defines `alias ll='ls -al'` for quicker directory listings over SSH. **Migration 4.5.5** retro-fits existing apps: it appends the alias to each app's `~/.bashrc` once (only when missing, preserving ownership), so apps created before 4.5.5 get it on the next `cipi self-update`.
+
+---
+
 ## [4.5.4] — 2026-06-02
 
 ### Changed
