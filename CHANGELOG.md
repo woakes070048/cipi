@@ -4,6 +4,18 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.5.4] — 2026-06-02
+
+### Changed
+
+- **PHP < 8.3 can no longer be installed** — Cipi now bundles **Deployer 8** (the current major, downloaded as the latest `deployer.org/deployer.phar`), which requires **PHP >= 8.3**. Because `dep` is executed with the *app's* PHP version (`/usr/bin/php${php_ver} /usr/local/bin/dep deploy …`), running the v8 phar under PHP 7.4/8.0/8.1/8.2 would break every deploy. To prevent that mismatch at the source, **`validate_php_version` now accepts only `8.3`, `8.4`, `8.5`**, so `cipi php install`, `cipi php switch`, `cipi app create` and `cipi app edit` reject older versions with a clear message. The PHP recipes (`lib/deployer/{laravel,custom}.php`) are PHP-based and unchanged in Deployer 8, so no recipe migration is needed. Legacy installs are still detectable and removable: **`cipi php remove`** uses the new **`validate_php_version_known`** helper (7.4–8.5) so you can clean up a pre-4.5.4 server with e.g. `cipi php remove 8.1`.
+
+### Added
+
+- **Deploy-time guard for apps still on PHP < 8.3** — restricting *installs* doesn't help servers that already host apps pinned to old PHP. **`cipi deploy <app>`** and **`cipi deploy <app> --rollback`** now call `_deploy_assert_php_compat`, which checks the **actually installed** Deployer major (`deployer_major_version`, parsed from `dep --version`): only when **Deployer 8+** is present *and* the app's PHP fails `validate_php_version` does it abort **before** invoking `dep`, with a clear "upgrade to 8.3/8.4/8.5" message instead of a cryptic phar parse error. Under Deployer 7 it's a no-op (those apps still deploy). **Migration 4.5.4** performs the same check once at update time — gated on Deployer 8+ — and prints the list of affected apps so operators know exactly what to upgrade (it changes nothing).
+
+---
+
 ## [4.5.3] — 2026-06-02
 
 ### Fixed

@@ -47,7 +47,7 @@ app_create() {
     # Validate
     validate_username "$app_user"  || { error "Invalid username '${app_user}'"; exit 1; }
     validate_domain "$domain"      || { error "Invalid domain '${domain}'"; exit 1; }
-    validate_php_version "$php_ver" || { error "Invalid PHP version. Use: 7.4 8.0 8.1 8.2 8.3 8.4 8.5"; exit 1; }
+    validate_php_version "$php_ver" || { error "Invalid PHP version. Use: 8.3 8.4 8.5"; exit 1; }
     php_is_installed "$php_ver"    || { error "PHP $php_ver not installed. Run: cipi php install $php_ver"; exit 1; }
     app_exists "$app_user"         && { error "App '${app_user}' already exists"; exit 1; }
     id "$app_user" &>/dev/null     && { error "User '${app_user}' already exists"; exit 1; }

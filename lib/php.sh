@@ -18,8 +18,8 @@ php_command() {
 
 _php_install() {
     local v="${1:-}"
-    [[ -z "$v" ]] && { error "Usage: cipi php install <7.4|8.0|8.1|8.2|8.3|8.4|8.5>"; exit 1; }
-    validate_php_version "$v" || { error "Invalid: $v"; exit 1; }
+    [[ -z "$v" ]] && { error "Usage: cipi php install <8.3|8.4|8.5>"; exit 1; }
+    validate_php_version "$v" || { error "Invalid PHP version: $v (Deployer 8 requires PHP >= 8.3; use 8.3, 8.4 or 8.5)"; exit 1; }
     php_is_installed "$v" && { info "PHP $v already installed"; return; }
     step "Adding PPA..."
     add-apt-repository -y ppa:ondrej/php &>/dev/null; apt-get update -qq
@@ -52,8 +52,8 @@ POOLEOF
 
 _php_switch() {
     local v="${1:-}"
-    [[ -z "$v" ]] && { error "Usage: cipi php switch <7.4|8.0|8.1|8.2|8.3|8.4|8.5>"; exit 1; }
-    validate_php_version "$v" || { error "Invalid: $v"; exit 1; }
+    [[ -z "$v" ]] && { error "Usage: cipi php switch <8.3|8.4|8.5>"; exit 1; }
+    validate_php_version "$v" || { error "Invalid PHP version: $v (use 8.3, 8.4 or 8.5)"; exit 1; }
     php_is_installed "$v" || { error "PHP $v not installed. Run: cipi php install $v"; exit 1; }
 
     local cur; cur=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "")
@@ -108,7 +108,7 @@ _php_switch() {
 _php_remove() {
     local v="${1:-}"
     [[ -z "$v" ]] && { error "Usage: cipi php remove <ver>"; exit 1; }
-    validate_php_version "$v" || { error "Invalid: $v"; exit 1; }
+    validate_php_version_known "$v" || { error "Invalid: $v"; exit 1; }
     local sys_ver; sys_ver=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "")
     [[ "$v" == "$sys_ver" ]] && { error "PHP $v is the system default. Switch first: cipi php switch <other-ver>"; exit 1; }
     if [[ -f "${CIPI_CONFIG}/apps.json" ]]; then

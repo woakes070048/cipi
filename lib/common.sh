@@ -100,11 +100,30 @@ validate_domain() {
     [[ "$1" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$ ]]
 }
 
+# Installable / usable PHP versions. Restricted to 8.3+ because the bundled
+# Deployer (v8) requires PHP >= 8.3 and `dep` is invoked with the app's PHP
+# version — running it under an older interpreter would break every deploy.
 validate_php_version() {
+    case "$1" in 8.3|8.4|8.5) return 0 ;; *) return 1 ;; esac
+}
+
+# Any PHP version Cipi has ever managed. Used where we must still operate on a
+# legacy install (e.g. `cipi php remove 8.0` to clean up a pre-4.5.4 server).
+validate_php_version_known() {
     case "$1" in 7.4|8.0|8.1|8.2|8.3|8.4|8.5) return 0 ;; *) return 1 ;; esac
 }
 
 php_is_installed() { dpkg -l "php${1}-fpm" &>/dev/null 2>&1; }
+
+# Major version of the installed Deployer binary (e.g. "8"). Empty if `dep` is
+# missing/unreadable. Used to gate the PHP >= 8.3 requirement: only Deployer 8+
+# rejects older PHP — under Deployer 7 those apps still deploy fine.
+deployer_major_version() {
+    local v
+    v=$(/usr/local/bin/dep --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1)
+    [[ -z "$v" ]] && return 1
+    echo "${v%%.*}"
+}
 
 app_exists() {
     [[ -f "${CIPI_CONFIG}/apps.json" ]] && vault_read apps.json | jq -e --arg a "$1" '.[$a]' &>/dev/null

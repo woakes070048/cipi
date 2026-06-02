@@ -3,6 +3,24 @@
 # Cipi — Deploy Management (Deployer)
 #############################################
 
+# Refuse to invoke `dep` for an app pinned to PHP < 8.3 when Deployer 8+ is
+# installed: `dep` runs under the app's PHP, and the v8 phar can't even start
+# on PHP < 8.3, so this fails fast with a clear message instead of a cryptic
+# parse/version error. No-op under Deployer 7 (which supports older PHP).
+_deploy_assert_php_compat() {
+    local app="$1" php_ver="$2"
+    [[ -z "$php_ver" ]] && return 0
+    local dep_major; dep_major=$(deployer_major_version 2>/dev/null || echo "")
+    [[ -z "$dep_major" ]] && return 0
+    if (( dep_major >= 8 )) && ! validate_php_version "$php_ver"; then
+        error "App '${app}' uses PHP ${php_ver}, but Deployer ${dep_major} requires PHP >= 8.3."
+        warn  "Upgrade the app first:  cipi app edit ${app}   (set PHP to 8.3, 8.4 or 8.5)"
+        warn  "Install the version if needed:  cipi php install 8.3"
+        log_action "DEPLOY BLOCKED: $app php=${php_ver} dep=${dep_major}"
+        exit 1
+    fi
+}
+
 deploy_command() {
     local app="${1:-}"; shift||true
     [[ -z "$app" ]] && { error "Usage: cipi deploy <app> [--rollback|--releases|--key|--webhook]"; exit 1; }
@@ -40,6 +58,8 @@ _deploy_run() {
         success "Deployer config created"
     fi
 
+    _deploy_assert_php_compat "$app" "$php_ver"
+
     # Legacy per-file ACLs on laravel-*.log break deploy:writable chmod — strip before Deployer runs.
     ensure_app_logs_permissions "$app" || true
 
@@ -74,6 +94,7 @@ _deploy_unlock() {
 _deploy_rollback() {
     local app="$1" home="/home/${app}"
     local php_ver; php_ver=$(app_get "$app" php)
+    _deploy_assert_php_compat "$app" "$php_ver"
     confirm "Rollback '${app}'?" || { info "Cancelled"; return; }
     info "Rolling back..."
     sudo -u "$app" bash -c "cd ${home} && /usr/bin/php${php_ver} /usr/local/bin/dep rollback -f ${home}/.deployer/deploy.php 2>&1"

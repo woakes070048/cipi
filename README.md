@@ -8,11 +8,6 @@
 One command installs a complete production stack. One command deploys your app.<br>
 No panel, no bloat — so you can focus on what you love: building your application.
 
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/cipi-sh/cipi?style=flat&color=yellow)](https://github.com/cipi-sh/cipi/stargazers)
-[![Version](https://img.shields.io/badge/version-4.4.19-green.svg)](https://github.com/cipi-sh/cipi/releases)
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04%2B-orange.svg)](https://ubuntu.com)
-
 [Website](https://cipi.sh) · [Docs](https://cipi.sh/docs) · [Report a bug](https://github.com/cipi-sh/cipi/issues)
 
 </div>
