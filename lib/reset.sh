@@ -57,37 +57,37 @@ reset_db_root_password() {
     echo ""
 }
 
-# ── REDIS PASSWORD ───────────────────────────────────────────
+# ── VALKEY PASSWORD ──────────────────────────────────────────
 
-reset_redis_password() {
+reset_valkey_password() {
     local new_pass
     new_pass=$(generate_password 40)
 
-    # Update redis.conf
-    if grep -q "^requirepass" /etc/redis/redis.conf; then
-        sed -i "s/^requirepass.*/requirepass ${new_pass}/" /etc/redis/redis.conf
+    # Update valkey.conf
+    if grep -q "^requirepass" /etc/valkey/valkey.conf; then
+        sed -i "s/^requirepass.*/requirepass ${new_pass}/" /etc/valkey/valkey.conf
     else
-        echo "requirepass ${new_pass}" >> /etc/redis/redis.conf
+        echo "requirepass ${new_pass}" >> /etc/valkey/valkey.conf
     fi
 
-    systemctl restart redis-server
+    systemctl restart valkey-server
 
-    # Update server.json
+    # Update server.json (write valkey_password; drop legacy redis_password)
     local tmp
     tmp=$(mktemp)
-    vault_read server.json | jq --arg p "$new_pass" '. + {redis_password: $p}' > "$tmp"
+    vault_read server.json | jq --arg p "$new_pass" '. + {valkey_password: $p} | del(.redis_password)' > "$tmp"
     vault_write server.json < "$tmp"
     rm -f "$tmp"
 
-    log_action "REDIS PASSWORD RESET"
+    log_action "VALKEY PASSWORD RESET"
 
     cipi_notify \
-        "Cipi Redis password reset on $(hostname)" \
-        "The Redis password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "Cipi Valkey password reset on $(hostname)" \
+        "The Valkey password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
     echo ""
-    echo -e "${GREEN}✓${NC} New Redis password: ${CYAN}${new_pass}${NC}"
-    echo -e "${DIM}Redis has been restarted.${NC}"
+    echo -e "${GREEN}✓${NC} New Valkey password: ${CYAN}${new_pass}${NC}"
+    echo -e "${DIM}Valkey has been restarted.${NC}"
     echo -e "${YELLOW}Update REDIS_PASSWORD in your app .env files!${NC}"
     echo -e "${YELLOW}${BOLD}⚠ SAVE THIS PASSWORD — shown only once${NC}"
     echo ""
@@ -100,7 +100,7 @@ reset_command() {
     case "$sub" in
         root-password)  reset_root_password ;;
         db-password)    reset_db_root_password ;;
-        redis-password) reset_redis_password ;;
-        *) error "Unknown: $sub"; echo "Use: root-password db-password redis-password"; exit 1 ;;
+        valkey-password|redis-password) reset_valkey_password ;;
+        *) error "Unknown: $sub"; echo "Use: root-password db-password valkey-password"; exit 1 ;;
     esac
 }

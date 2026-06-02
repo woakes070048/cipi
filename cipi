@@ -169,7 +169,7 @@ show_help() {
     echo -e "  ${BOLD}${CYAN}RESET${NC}"
     echo -e "    ${CYAN}cipi reset root-password${NC}            Reset root SSH password"
     echo -e "    ${CYAN}cipi reset db-password${NC}              Reset MariaDB root password"
-    echo -e "    ${CYAN}cipi reset redis-password${NC}           Reset Redis password"
+    echo -e "    ${CYAN}cipi reset valkey-password${NC}          Reset Valkey password"
 }
 
 show_status() {

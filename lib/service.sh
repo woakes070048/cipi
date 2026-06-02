@@ -3,7 +3,7 @@
 # Cipi — Service Management
 #############################################
 
-readonly CIPI_SERVICES=(nginx mariadb redis-server supervisor fail2ban)
+readonly CIPI_SERVICES=(nginx mariadb valkey-server supervisor fail2ban)
 
 _svc_label() {
     local svc="$1"
@@ -41,15 +41,18 @@ _resolve_services() {
                     && echo -n "php${v}-fpm "
             done
             ;;
-        nginx|mariadb|redis-server|supervisor|fail2ban)
+        nginx|mariadb|valkey-server|supervisor|fail2ban)
             echo "$name"
+            ;;
+        redis-server|valkey|redis)
+            echo "valkey-server"
             ;;
         php*-fpm)
             echo "$name"
             ;;
         *)
             error "Unknown service: ${name}"
-            echo -e "  Valid names: ${CYAN}nginx mariadb redis-server supervisor fail2ban php<ver>-fpm all${NC}" >&2
+            echo -e "  Valid names: ${CYAN}nginx mariadb valkey-server supervisor fail2ban php<ver>-fpm all${NC}" >&2
             return 1
             ;;
     esac

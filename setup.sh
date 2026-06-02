@@ -572,44 +572,47 @@ CNFEOF
     echo -e "${GREEN}✓ MariaDB 11.4 (buffer_pool: ${BUFFER_POOL})${NC}"
 }
 
-# ── REDIS ───────────────────────────────────────────────────
+# ── VALKEY ──────────────────────────────────────────────────
+# Valkey is a Redis-compatible (RESP, same config directives, port 6379) fork
+# shipped in Ubuntu 24.04 Universe (`valkey` + `valkey-tools`). Apps keep using
+# the phpredis extension and REDIS_* .env settings unchanged.
 
-install_redis() {
-    step_msg "Installing Redis..."
+install_valkey() {
+    step_msg "Installing Valkey..."
 
-    apt-get install -y -qq redis-server
+    apt-get install -y -qq valkey-server valkey-tools
 
     # Generate password
-    local REDIS_PASS
-    REDIS_PASS=$(openssl rand -base64 64 | tr -dc 'a-zA-Z0-9' | head -c 40)
+    local VALKEY_PASS
+    VALKEY_PASS=$(openssl rand -base64 64 | tr -dc 'a-zA-Z0-9' | head -c 40)
 
     # Configure requirepass and bind to localhost
-    if grep -q "^# *requirepass" /etc/redis/redis.conf; then
-        sed -i "s/^# *requirepass.*/requirepass ${REDIS_PASS}/" /etc/redis/redis.conf
-    elif grep -q "^requirepass" /etc/redis/redis.conf; then
-        sed -i "s/^requirepass.*/requirepass ${REDIS_PASS}/" /etc/redis/redis.conf
+    if grep -q "^# *requirepass" /etc/valkey/valkey.conf; then
+        sed -i "s/^# *requirepass.*/requirepass ${VALKEY_PASS}/" /etc/valkey/valkey.conf
+    elif grep -q "^requirepass" /etc/valkey/valkey.conf; then
+        sed -i "s/^requirepass.*/requirepass ${VALKEY_PASS}/" /etc/valkey/valkey.conf
     else
-        echo "requirepass ${REDIS_PASS}" >> /etc/redis/redis.conf
+        echo "requirepass ${VALKEY_PASS}" >> /etc/valkey/valkey.conf
     fi
 
     # Ensure bind to localhost only
-    if grep -q "^bind " /etc/redis/redis.conf; then
-        sed -i "s/^bind .*/bind 127.0.0.1 -::1/" /etc/redis/redis.conf
-    elif ! grep -q "^bind " /etc/redis/redis.conf; then
-        echo "bind 127.0.0.1 -::1" >> /etc/redis/redis.conf
+    if grep -q "^bind " /etc/valkey/valkey.conf; then
+        sed -i "s/^bind .*/bind 127.0.0.1 -::1/" /etc/valkey/valkey.conf
+    elif ! grep -q "^bind " /etc/valkey/valkey.conf; then
+        echo "bind 127.0.0.1 -::1" >> /etc/valkey/valkey.conf
     fi
 
-    systemctl restart redis-server
-    systemctl enable redis-server
+    systemctl restart valkey-server
+    systemctl enable valkey-server
 
-    # Save Redis credentials in server.json (merge with existing)
+    # Save Valkey credentials in server.json (merge with existing)
     local tmp
     tmp=$(mktemp)
-    jq --arg u "default" --arg p "$REDIS_PASS" '. + {redis_user: $u, redis_password: $p}' /etc/cipi/server.json > "$tmp"
+    jq --arg u "default" --arg p "$VALKEY_PASS" '. + {valkey_user: $u, valkey_password: $p}' /etc/cipi/server.json > "$tmp"
     mv "$tmp" /etc/cipi/server.json
     chmod 600 /etc/cipi/server.json
 
-    echo -e "${GREEN}✓ Redis $(redis-server --version 2>/dev/null | awk '{print $3}' || echo "")${NC}"
+    echo -e "${GREEN}✓ Valkey $(valkey-server --version 2>/dev/null | awk '{print $3}' || echo "")${NC}"
 }
 
 # ── PHP (multi-version) ──────────────────────────────────────
@@ -855,7 +858,7 @@ setup_cron() {
     mkdir -p /var/log/cipi
 
     # Configure unattended-upgrades: security patches only,
-    # never auto-upgrade nginx / mariadb / redis / php (managed by cipi)
+    # never auto-upgrade nginx / mariadb / valkey / php (managed by cipi)
     cat > /etc/apt/apt.conf.d/50cipi-unattended-upgrades <<'UUEOF'
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
@@ -870,7 +873,8 @@ Unattended-Upgrade::Package-Blacklist {
     "mariadb-server";
     "mariadb-client";
     "mariadb-common";
-    "redis-server";
+    "valkey";
+    "valkey-server";
     "php.*";
     "libphp.*";
 };
@@ -1003,9 +1007,9 @@ final_summary() {
     local _sj; _sj=$(vault_read server.json)
     local DB_ROOT_PASS
     DB_ROOT_PASS=$(echo "$_sj" | jq -r '.db_root_password')
-    local REDIS_USER REDIS_PASS
-    REDIS_USER=$(echo "$_sj" | jq -r '.redis_user // "default"')
-    REDIS_PASS=$(echo "$_sj" | jq -r '.redis_password // ""')
+    local VALKEY_USER VALKEY_PASS
+    VALKEY_USER=$(echo "$_sj" | jq -r '.valkey_user // .redis_user // "default"')
+    VALKEY_PASS=$(echo "$_sj" | jq -r '.valkey_password // .redis_password // ""')
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1020,10 +1024,10 @@ final_summary() {
     echo -e "  User:           ${CYAN}root${NC}"
     echo -e "  Password:       ${CYAN}${DB_ROOT_PASS}${NC}"
     echo ""
-    if [[ -n "$REDIS_PASS" ]]; then
-    echo -e "  ${BOLD}Redis${NC}"
-    echo -e "  User:           ${CYAN}${REDIS_USER}${NC}"
-    echo -e "  Password:       ${CYAN}${REDIS_PASS}${NC}"
+    if [[ -n "$VALKEY_PASS" ]]; then
+    echo -e "  ${BOLD}Valkey${NC}"
+    echo -e "  User:           ${CYAN}${VALKEY_USER}${NC}"
+    echo -e "  Password:       ${CYAN}${VALKEY_PASS}${NC}"
     echo ""
     fi
     local ROOT_PASS
@@ -1075,7 +1079,7 @@ main() {
     install_deployer
     install_nodejs
     install_supervisor
-    install_redis
+    install_valkey
     install_certbot
     install_cipi
     setup_pam || echo -e "${YELLOW}⚠ setup_pam failed, continuing...${NC}"

@@ -4,6 +4,23 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.5.7] — 2026-06-02
+
+### Fixed
+
+- **Valkey install used the wrong package name** — `setup.sh` and migration 4.5.6 installed `valkey`, but on Ubuntu 24.04 the daemon package is **`valkey-server`** (source `valkey`; binaries `valkey-server` + `valkey-tools`). On servers that had already updated to 4.5.6 the switch aborted with *"valkey package not available"* and left `redis-server` running (no data touched). Since 4.5.6 has already shipped and a migration can't be re-run, `setup.sh` is corrected to `valkey-server` and **migration 4.5.7 performs the full, corrected Redis → Valkey switch itself** (self-contained: reuse password, preserve the RDB/AOF dataset, purge `redis-server`, install `valkey-server` + `valkey-tools`, restore data, rewrite `server.json`/blacklist). It adds extra safety nets: it **auto-enables the `universe` component** when the package isn't found (via `add-apt-repository` if present, otherwise by editing the deb822/legacy APT sources directly — no `software-properties-common` needed) and re-checks; it runs a **post-start health check** (`PING` → `PONG` with the password) and, if Valkey doesn't come up healthy (or can't be installed), **rolls back to `redis-server` restoring both the saved password and the dataset**, so the server is never left without a working cache backend. The dataset snapshot is kept until the switch is verified, then cleaned up. Idempotent — servers already on Valkey skip it.
+
+---
+
+## [4.5.6] — 2026-06-02
+
+### Changed
+
+- **Redis → Valkey** — Cipi now provisions **Valkey** (the BSD-licensed, Redis-compatible fork shipped in Ubuntu 24.04 Universe as `valkey-server` + `valkey-tools`) instead of `redis-server`. Valkey speaks the same RESP protocol on the same port (`127.0.0.1:6379`) and honours the same `requirepass`/`bind` directives, so **apps need zero changes**: the `phpredis` extension and existing `REDIS_*` `.env` values keep working as-is. `setup.sh` installs and configures Valkey (`/etc/valkey/valkey.conf`, service `valkey-server`); `cipi service …` manages `valkey-server` (with `redis-server`/`redis`/`valkey` accepted as aliases); credentials live under `valkey_user`/`valkey_password` in `server.json` (legacy `redis_*` keys are still read as a fallback). **`cipi reset valkey-password`** replaces `cipi reset redis-password` (the old name stays as an alias).
+- **Migration 4.5.6 — automatic Redis → Valkey switch for existing servers** — on `cipi self-update`, servers still running `redis-server` are migrated to Valkey **reusing the current password** (recovered from `server.json` or `/etc/redis/redis.conf`), so no app `.env` needs editing. It first verifies the `valkey` package is installable (so a server that can't obtain it keeps its working cache backend untouched), **preserves the dataset** (forces an RDB `SAVE` and snapshots `dump.rdb`/AOF, restored into Valkey's data dir after install — Valkey reads the Redis 7.2 RDB/AOF format, so cache/sessions/queued jobs survive), then stops and **purges** `redis-server` (avoiding any apt Conflicts/Replaces ambiguity between the two packages) before installing and configuring Valkey on the same port with the same `requirepass`/`bind`, and rewrites `server.json` (`redis_*` → `valkey_*`) and the unattended-upgrades blacklist. If the install fails it restores `redis-server` with the saved password, so the server is never left without a cache backend; otherwise rollback is a plain `apt install redis-server` (the password lives in `server.json`). The migration is idempotent and safe to re-run.
+
+---
+
 ## [4.5.5] — 2026-06-02
 
 ### Added

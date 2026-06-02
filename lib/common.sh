@@ -91,7 +91,7 @@ generate_app_key()  { echo "base64:$(openssl rand -base64 32)"; }
 validate_username() {
     local n="$1"
     [[ ! "$n" =~ ^[a-z][a-z0-9]{2,31}$ ]] && return 1
-    local bad=("root" "admin" "www" "nginx" "mysql" "mariadb" "redis" "git" "deploy" "cipi" "ubuntu" "debian" "supervisor" "nobody" "postfix" "sshd" "clamav" "daemon" "bin" "sys")
+    local bad=("root" "admin" "www" "nginx" "mysql" "mariadb" "redis" "valkey" "git" "deploy" "cipi" "ubuntu" "debian" "supervisor" "nobody" "postfix" "sshd" "clamav" "daemon" "bin" "sys")
     for b in "${bad[@]}"; do [[ "$n" == "$b" ]] && return 1; done
     return 0
 }
