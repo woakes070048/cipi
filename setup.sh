@@ -522,13 +522,36 @@ EOF
 
 # ── MARIADB ───────────────────────────────────────────────────
 
+# MariaDB.org 11.4 repo publishes per-Ubuntu-codename suites (noble, jammy, …).
+# Newer releases (e.g. resolute / 26.04) may not have a suite yet — use Ubuntu main.
+_mariadb_official_repo_available() {
+    local codename="$1"
+    [[ -n "$codename" ]] || return 1
+    curl -fsI --max-time 15 \
+        "https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu/dists/${codename}/Release" \
+        2>/dev/null | head -1 | grep -qE '^HTTP/[0-9.]+ 200'
+}
+
 install_mariadb() {
     step_msg "Installing MariaDB..."
 
-    # MariaDB official repo for latest stable
-    curl -fsSL https://mariadb.org/mariadb_release_signing_key.pgp | gpg --dearmor -o /usr/share/keyrings/mariadb-keyring.gpg 2>/dev/null
+    local codename
+    codename="$(lsb_release -cs 2>/dev/null)"
+    if [[ -z "$codename" ]]; then
+        # shellcheck source=/dev/null
+        . /etc/os-release 2>/dev/null || true
+        codename="${VERSION_CODENAME:-noble}"
+    fi
 
-    echo "deb [signed-by=/usr/share/keyrings/mariadb-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/mariadb.list
+    if _mariadb_official_repo_available "$codename"; then
+        curl -fsSL https://mariadb.org/mariadb_release_signing_key.pgp \
+            | gpg --dearmor -o /usr/share/keyrings/mariadb-keyring.gpg 2>/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/mariadb-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu ${codename} main" \
+            > /etc/apt/sources.list.d/mariadb.list
+    else
+        rm -f /etc/apt/sources.list.d/mariadb.list
+        echo -e "${YELLOW}  MariaDB.org has no suite for '${codename}' — using Ubuntu main archive${NC}"
+    fi
 
     apt-get update -qq
     apt-get install -y -qq mariadb-server mariadb-client
@@ -582,7 +605,7 @@ CNFEOF
     mv "$tmp" /etc/cipi/server.json
     chmod 600 /etc/cipi/server.json
 
-    echo -e "${GREEN}✓ MariaDB 11.4 (buffer_pool: ${BUFFER_POOL})${NC}"
+    echo -e "${GREEN}✓ MariaDB $(mariadb --version 2>&1 | sed -n 's/.*Distrib \([0-9.]*\).*/\1/p' | head -1) (buffer_pool: ${BUFFER_POOL})${NC}"
 }
 
 # ── VALKEY ──────────────────────────────────────────────────

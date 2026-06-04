@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.5.11] — 2026-06-04
+
+### Fixed
+
+- **MariaDB install failed on Ubuntu 26.04 (resolute)** — `setup.sh` always added the MariaDB.org **11.4** APT repo using `$(lsb_release -cs)`, but that repository does not publish a **`resolute`** suite yet, so `apt-get update` failed with *Release file not found*. The installer now probes the repo for a valid `Release` file per codename: when the suite exists (e.g. **noble**, **jammy**) it uses MariaDB.org 11.4 as before; when it does not (e.g. **resolute** / Ubuntu 26.04) it skips the third-party repo and installs **MariaDB from Ubuntu main** (11.8.x on 26.04). A leftover broken `/etc/apt/sources.list.d/mariadb.list` from a failed run is removed automatically.
+
+---
+
 ## [4.5.10] — 2026-06-04
 
 ### Fixed
