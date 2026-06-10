@@ -8,6 +8,7 @@
 #############################################
 
 set -e
+set -o pipefail
 
 REPO="cipi-sh/cipi"
 BRANCH="${1:-latest}"
@@ -25,6 +26,30 @@ NC='\033[0m'
 BOLD='\033[1m'
 
 export DEBIAN_FRONTEND=noninteractive
+
+APT_OPTS='-o DPkg::Lock::Timeout=300'
+
+_cipi_apt_notice_if_locked() {
+    if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+        echo -e "${YELLOW}System updates in progress, waiting for apt to be available...${NC}"
+    fi
+}
+
+_cipi_apt_configure_lock_timeout() {
+    cat > /etc/apt/apt.conf.d/00cipi-lock-timeout <<'EOF'
+DPkg::Lock::Timeout "300";
+EOF
+}
+
+_cipi_apt_update() {
+    _cipi_apt_notice_if_locked
+    apt-get $APT_OPTS update "$@"
+}
+
+_cipi_apt_install() {
+    _cipi_apt_notice_if_locked
+    apt-get $APT_OPTS install "$@"
+}
 
 show_logo() {
     clear
@@ -115,8 +140,9 @@ install_basics() {
     step_msg "Installing base packages..."
 
     _cipi_sanitize_known_broken_apt_sources
-    apt-get update -qq
-    apt-get install -y -qq \
+    _cipi_apt_configure_lock_timeout
+    _cipi_apt_update -qq
+    _cipi_apt_install -y -qq \
         software-properties-common curl wget nano vim git \
         zip unzip openssl expect apt-transport-https \
         ca-certificates gnupg lsb-release jq bc acl \
@@ -335,7 +361,7 @@ MATCHEOF
 install_nginx() {
     step_msg "Installing Nginx..."
 
-    apt-get install -y -qq nginx libnginx-mod-http-headers-more-filter
+    _cipi_apt_install -y -qq nginx libnginx-mod-http-headers-more-filter
 
     local CPU_CORES
     CPU_CORES=$(nproc)
@@ -501,7 +527,7 @@ EOF
 install_firewall() {
     step_msg "Installing firewall & fail2ban..."
 
-    apt-get install -y -qq fail2ban ufw
+    _cipi_apt_install -y -qq fail2ban ufw
 
     cat > /etc/fail2ban/jail.local <<'EOF'
 [DEFAULT]
@@ -553,8 +579,8 @@ install_mariadb() {
         rm -f /etc/apt/sources.list.d/mariadb.list
     fi
 
-    apt-get update -qq
-    apt-get install -y -qq mariadb-server mariadb-client
+    _cipi_apt_update -qq
+    _cipi_apt_install -y -qq mariadb-server mariadb-client
 
     # Generate root password
     local DB_ROOT_PASS
@@ -616,7 +642,7 @@ CNFEOF
 install_valkey() {
     step_msg "Installing Valkey..."
 
-    apt-get install -y -qq valkey-server valkey-tools
+    _cipi_apt_install -y -qq valkey-server valkey-tools
 
     # Generate password
     local VALKEY_PASS
@@ -664,7 +690,7 @@ install_php() {
     else
         add-apt-repository -y ppa:ondrej/php &>/dev/null
     fi
-    apt-get update -qq
+    _cipi_apt_update -qq
 
     local EXTENSIONS="fpm common cli curl bcmath mbstring mysql sqlite3 pgsql memcached redis zip xml soap gd imagick intl"
 
@@ -675,7 +701,7 @@ install_php() {
         for EXT in $EXTENSIONS; do
             PACKAGES+=" php${VER}-${EXT}"
         done
-        apt-get install -y -qq $PACKAGES
+        _cipi_apt_install -y -qq $PACKAGES
 
         # Cipi defaults
         cat > "/etc/php/${VER}/fpm/conf.d/99-cipi.ini" <<INIEOF
@@ -751,7 +777,7 @@ install_nodejs() {
     step_msg "Installing Node.js..."
 
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &>/dev/null
-    apt-get install -y -qq nodejs
+    _cipi_apt_install -y -qq nodejs
 
     echo -e "${GREEN}✓ Node.js $(node -v 2>/dev/null)${NC}"
 }
@@ -761,7 +787,7 @@ install_nodejs() {
 install_supervisor() {
     step_msg "Installing Supervisor..."
 
-    apt-get install -y -qq supervisor
+    _cipi_apt_install -y -qq supervisor
     systemctl enable supervisor
     systemctl start supervisor
 
@@ -773,7 +799,7 @@ install_supervisor() {
 install_certbot() {
     step_msg "Installing Certbot..."
 
-    apt-get install -y -qq certbot python3-certbot-nginx
+    _cipi_apt_install -y -qq certbot python3-certbot-nginx
 
     echo -e "${GREEN}✓ Certbot${NC}"
 }

@@ -3,6 +3,26 @@
 # Cipi — PHP APT source helpers (ondrej / sury / Ubuntu archive)
 #############################################
 
+_cipi_apt_lock_timeout_opts='-o DPkg::Lock::Timeout=300'
+
+# Direct dpkg does not honour DPkg::Lock::Timeout — wait before dpkg -i.
+cipi_wait_for_dpkg_lock() {
+    local timeout="${1:-300}"
+    local waited=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+       || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+        if (( waited == 0 )); then
+            echo "System updates in progress, waiting for dpkg to be available..." >&2
+        fi
+        sleep 2
+        waited=$((waited + 2))
+        if (( waited >= timeout )); then
+            echo "Timed out waiting for dpkg lock after ${timeout}s" >&2
+            return 1
+        fi
+    done
+}
+
 ubuntu_codename() {
     local cn
     cn="$(lsb_release -cs 2>/dev/null)"
@@ -101,11 +121,12 @@ php_setup_sury_repo() {
     local codename
     codename="$(ubuntu_codename)"
 
-    apt-get install -y -qq ca-certificates curl 2>/dev/null || true
+    apt-get $_cipi_apt_lock_timeout_opts install -y -qq ca-certificates curl
 
     curl -fsSL -o /tmp/debsuryorg-archive-keyring.deb \
         https://packages.sury.org/debsuryorg-archive-keyring.deb
-    dpkg -i /tmp/debsuryorg-archive-keyring.deb 2>/dev/null || true
+    cipi_wait_for_dpkg_lock
+    dpkg -i /tmp/debsuryorg-archive-keyring.deb
     rm -f /tmp/debsuryorg-archive-keyring.deb
 
     echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ ${codename} main" \

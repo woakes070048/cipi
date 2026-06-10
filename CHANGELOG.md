@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.6.7] — 2026-06-10
+
+### Fixed
+
+- **`setup.sh` failed on fresh VPS when `unattended-upgrades` holds the apt lock** — the typical flow (new VPS → paste the install command) often collides with the first automatic security update, so the very first `apt-get` could exit immediately with *Could not get lock* and abort the install. **`setup.sh`** now waits up to **300s** for the lock on every **`apt-get`** via **`DPkg::Lock::Timeout`**, shows a short *System updates in progress…* message when the lock is already held, and writes **`/etc/apt/apt.conf.d/00cipi-lock-timeout`** so later steps (PPA, NodeSource, cron) inherit the same timeout. **`set -o pipefail`** was added so piped installers (e.g. NodeSource) cannot fail silently. **`lib/php-apt.sh`**: direct **`dpkg -i`** (Sury keyring) uses **`cipi_wait_for_dpkg_lock`** because dpkg does not honour the apt timeout; removed **`|| true`** on that path so a broken keyring install stops instead of continuing with missing PHP packages. **Migration 4.6.7** applies the apt.conf snippet on existing servers.
+
+---
+
 ## [4.6.6] — 2026-06-10
 
 ### Fixed
