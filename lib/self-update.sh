@@ -64,6 +64,7 @@ selfupdate_command() {
     export CIPI_LIB="${CIPI_LIB:-/opt/cipi/lib}"
     export CIPI_CONFIG="${CIPI_CONFIG:-/etc/cipi}"
     export CIPI_LOG="${CIPI_LOG:-/var/log/cipi}"
+    export CIPI_API_ROOT="${CIPI_API_ROOT:-/opt/cipi/api}"
     if [[ -d "${tmp}/lib/migrations" ]]; then
         for m in $(ls "${tmp}/lib/migrations/"*.sh 2>/dev/null|sort -V); do
             local mv; mv=$(basename "$m" .sh)

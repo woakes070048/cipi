@@ -8,9 +8,9 @@ set -uo pipefail
 
 LABEL="${1:-cron}"; shift || { echo "Usage: cipi-cron-notify <label> <command...>"; exit 1; }
 
-readonly CIPI_LIB="/opt/cipi/lib"
-readonly CIPI_CONFIG="/etc/cipi"
-readonly CIPI_LOG="/var/log/cipi"
+if [[ -z "${CIPI_LIB:-}" ]]; then readonly CIPI_LIB="/opt/cipi/lib"; fi
+if [[ -z "${CIPI_CONFIG:-}" ]]; then readonly CIPI_CONFIG="/etc/cipi"; fi
+if [[ -z "${CIPI_LOG:-}" ]]; then readonly CIPI_LOG="/var/log/cipi"; fi
 readonly SMTP_CFG="${CIPI_CONFIG}/smtp.json"
 readonly SMTP_RC="${CIPI_CONFIG}/.msmtprc"
 

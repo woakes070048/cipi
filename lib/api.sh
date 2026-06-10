@@ -3,8 +3,13 @@
 # Cipi — API & MCP Server Management
 #############################################
 
-readonly CIPI_API_ROOT="/opt/cipi/api"
-readonly CIPI_API_CONFIG="${CIPI_CONFIG}/api.json"
+# When sourced inside migrations, CIPI_API_* may already be readonly — only assign when unset.
+if [[ -z "${CIPI_API_ROOT:-}" ]]; then
+    readonly CIPI_API_ROOT="/opt/cipi/api"
+fi
+if [[ -z "${CIPI_API_CONFIG:-}" ]]; then
+    readonly CIPI_API_CONFIG="${CIPI_CONFIG}/api.json"
+fi
 
 # ability|description — sourced from the API package (token-abilities.txt / artisan)
 _api_ability_lines() {

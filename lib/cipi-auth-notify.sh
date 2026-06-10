@@ -16,9 +16,9 @@
 
 [[ "${PAM_TYPE:-}" == "open_session" ]] || exit 0
 
-readonly CIPI_CONFIG="/etc/cipi"
-readonly CIPI_LIB="/opt/cipi/lib"
-readonly CIPI_LOG="/var/log/cipi"
+if [[ -z "${CIPI_CONFIG:-}" ]]; then readonly CIPI_CONFIG="/etc/cipi"; fi
+if [[ -z "${CIPI_LIB:-}" ]]; then readonly CIPI_LIB="/opt/cipi/lib"; fi
+if [[ -z "${CIPI_LOG:-}" ]]; then readonly CIPI_LOG="/var/log/cipi"; fi
 readonly EVENTS_LOG="${CIPI_LOG}/events.log"
 
 HOSTNAME=$(hostname 2>/dev/null || echo "unknown")

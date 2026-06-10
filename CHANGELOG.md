@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.6.5] — 2026-06-10
+
+### Fixed
+
+- **Self-update stuck on 4.6.2–4.6.4 (readonly / unset `CIPI_*` in sourced libs)** — `lib/api.sh` assigned `CIPI_API_ROOT` and `CIPI_API_CONFIG` as `readonly` without checking whether a migration had already set them, so sourcing `api.sh` inside **4.6.3** / **4.6.4** could abort the migration loop. Guards now match `common.sh` (assign only when unset). **`self-update`** also exports `CIPI_API_ROOT` before migrations. **`cipi-cron-notify`**, **`cipi-auth-notify`**, and **`cipi-app-notify`** use the same pattern. **Migration 4.6.5** is an idempotent belt-and-suspenders pass over `lib/*.sh` on disk for hybrid installs that still have old unguarded `export`/`readonly` assignments (skips plain `CIPI_*=` lines inside heredocs such as `app.sh` `.env` templates; pure bash, mawk-safe).
+
+---
+
 ## [4.6.4] — 2026-06-10
 
 ### Fixed
