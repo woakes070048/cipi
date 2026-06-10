@@ -352,6 +352,10 @@ _git_set_github_token() {
     [[ -z "$token" ]] && { error "Usage: cipi git github-token <token>"; exit 1; }
     _git_server_set "github_token" "$token"
     log_action "GIT: GitHub token configured"
+    cipi_notify \
+        "Cipi GitHub token configured on $(hostname)" \
+        "Git provider credentials were updated.\n\nServer: $(hostname)\nProvider: GitHub\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        git_configure
     success "GitHub token saved"
 }
 
@@ -360,6 +364,10 @@ _git_set_gitlab_token() {
     [[ -z "$token" ]] && { error "Usage: cipi git gitlab-token <token>"; exit 1; }
     _git_server_set "gitlab_token" "$token"
     log_action "GIT: GitLab token configured"
+    cipi_notify \
+        "Cipi GitLab token configured on $(hostname)" \
+        "Git provider credentials were updated.\n\nServer: $(hostname)\nProvider: GitLab\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        git_configure
     success "GitLab token saved"
 }
 
@@ -369,12 +377,20 @@ _git_set_gitlab_url() {
     url="${url%/}"
     _git_server_set "gitlab_url" "$url"
     log_action "GIT: GitLab URL set to ${url}"
+    cipi_notify \
+        "Cipi GitLab URL configured on $(hostname)" \
+        "Git provider settings were updated.\n\nServer: $(hostname)\nGitLab URL: ${url}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        git_configure
     success "GitLab URL set to ${url}"
 }
 
 _git_remove_github_token() {
     _git_server_remove "github_token"
     log_action "GIT: GitHub token removed"
+    cipi_notify \
+        "Cipi GitHub token removed on $(hostname)" \
+        "Git provider credentials were removed.\n\nServer: $(hostname)\nProvider: GitHub\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        git_configure
     success "GitHub token removed"
 }
 
@@ -382,6 +398,10 @@ _git_remove_gitlab_token() {
     _git_server_remove "gitlab_token"
     _git_server_remove "gitlab_url"
     log_action "GIT: GitLab token removed"
+    cipi_notify \
+        "Cipi GitLab token removed on $(hostname)" \
+        "Git provider credentials were removed.\n\nServer: $(hostname)\nProvider: GitLab\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        git_configure
     success "GitLab token and URL removed"
 }
 

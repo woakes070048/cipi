@@ -89,6 +89,10 @@ service_restart() {
                 || error "Failed to restart ${svc}"
         fi
         log_action "service restart ${svc}"
+        cipi_notify \
+            "Cipi service restarted: ${svc} on $(hostname)" \
+            "A system service was restarted.\n\nServer: $(hostname)\nService: ${svc}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            service_restart
     done
 }
 
@@ -102,6 +106,10 @@ service_start() {
         && success "${svc} started" \
         || error "Failed to start ${svc}"
     log_action "service start ${svc}"
+    cipi_notify \
+        "Cipi service started: ${svc} on $(hostname)" \
+        "A system service was started.\n\nServer: $(hostname)\nService: ${svc}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        service_start
 }
 
 service_stop() {
@@ -117,6 +125,10 @@ service_stop() {
         && success "${svc} stopped" \
         || error "Failed to stop ${svc}"
     log_action "service stop ${svc}"
+    cipi_notify \
+        "Cipi service stopped: ${svc} on $(hostname)" \
+        "A system service was stopped.\n\nServer: $(hostname)\nService: ${svc}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        service_stop
 }
 
 service_command() {

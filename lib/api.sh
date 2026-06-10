@@ -6,13 +6,32 @@
 readonly CIPI_API_ROOT="/opt/cipi/api"
 readonly CIPI_API_CONFIG="${CIPI_CONFIG}/api.json"
 
-# ability|description — keep aligned with https://cipi.sh/docs/advanced#cipi-api
+# ability|description — sourced from the API package (token-abilities.txt / artisan)
 _api_ability_lines() {
+    local f src out=""
+    for f in \
+        "${CIPI_API_ROOT}/token-abilities.txt" \
+        "${CIPI_API_ROOT}/vendor/cipi/api/token-abilities.txt" \
+        "/opt/cipi/cipi-api/token-abilities.txt"; do
+        if [[ -f "$f" ]]; then
+            cat "$f"
+            return
+        fi
+    done
+    if [[ -d "${CIPI_API_ROOT}" && -f "${CIPI_API_ROOT}/artisan" ]]; then
+        out=$(cd "${CIPI_API_ROOT}" && _api_timeout 15 sudo -u www-data php artisan cipi:token-abilities 2>/dev/null) || true
+    fi
+    if [[ -n "$out" ]]; then
+        echo "$out"
+        return
+    fi
     cat <<'EOF'
 apps-view|Read apps
 apps-create|Create apps
 apps-edit|Edit apps
 apps-delete|Delete apps
+apps-suspend|Suspend / unsuspend apps
+apps-basicauth|HTTP Basic Auth
 deploy-manage|Deploy, rollback, unlock
 ssl-manage|SSL certificates
 aliases-view|Read aliases
@@ -22,8 +41,29 @@ dbs-view|List databases
 dbs-create|Create databases
 dbs-delete|Delete databases
 dbs-manage|Backup, restore, DB password
+status-view|Server status
 mcp-access|MCP server
 EOF
+}
+
+_api_sync_token_abilities_file() {
+    local dest="${CIPI_API_ROOT}/token-abilities.txt"
+    local src=""
+    for src in \
+        "${CIPI_API_ROOT}/vendor/cipi/api/token-abilities.txt" \
+        "/opt/cipi/cipi-api/token-abilities.txt"; do
+        if [[ -f "$src" ]]; then
+            cp "$src" "$dest"
+            chown www-data:www-data "$dest" 2>/dev/null || true
+            return 0
+        fi
+    done
+    if [[ -d "${CIPI_API_ROOT}" && -f "${CIPI_API_ROOT}/artisan" ]]; then
+        (cd "${CIPI_API_ROOT}" && _api_timeout 15 sudo -u www-data php artisan cipi:token-abilities > "$dest" 2>/dev/null) \
+            && chown www-data:www-data "$dest" 2>/dev/null \
+            && return 0
+    fi
+    return 1
 }
 
 _api_token_abilities_default() {
@@ -267,6 +307,10 @@ api_setup() {
     success "Cron (schedule:run + daily maintenance)"
 
     log_action "API CONFIGURED: $domain"
+    cipi_notify \
+        "Cipi API configured: ${domain} on $(hostname)" \
+        "The panel API was configured.\n\nServer: $(hostname)\nDomain: ${domain}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        api_configure
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "  ${GREEN}${BOLD}Cipi API configured${NC}"
@@ -361,6 +405,7 @@ _api_update_package() {
     chown -R www-data:www-data "${CIPI_API_ROOT}" 2>/dev/null || true
     (cd "${CIPI_API_ROOT}" && sudo -u www-data php artisan vendor:publish --tag=cipi-assets --force 2>/dev/null) || true
     (cd "${CIPI_API_ROOT}" && sudo -u www-data php artisan migrate --force 2>/dev/null) || true
+    _api_sync_token_abilities_file 2>/dev/null || true
     success "cipi-api package updated"
 }
 
@@ -431,6 +476,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 #    until FPM workers hit request_terminate_timeout and 500)
 #  - WAL checkpoint(TRUNCATE) so database.sqlite-wal doesn't grow unbounded
 15 4 * * * www-data /usr/local/bin/cipi-api-maintain >> /var/log/cipi-api-maintain.log 2>&1
+
+# Nightly soft update @ 04:30 — composer update + migrations (after cipi self-update @ 03:50).
+30 4 * * * root /usr/local/bin/cipi-cron-notify api-update /usr/local/bin/cipi-api-update >> /var/log/cipi-api-update.log 2>&1
 CRON
     chmod 644 /etc/cron.d/cipi-api
 
@@ -497,10 +545,52 @@ MAINTAIN
     chmod 755 /usr/local/bin/cipi-api-maintain
     chown root:root /usr/local/bin/cipi-api-maintain
 
+    cat > /usr/local/bin/cipi-api-update <<'UPDATE'
+#!/bin/bash
+# Cipi API nightly soft update (cipi api update) — see /etc/cron.d/cipi-api.
+set -u
+
+LOCK=/run/cipi-api-update.lock
+exec 9>"$LOCK"
+flock -n 9 || { echo "[$(date '+%F %T')] already running — skip"; exit 0; }
+
+if [[ ! -f /etc/cipi/api.json ]]; then
+    echo "[$(date '+%F %T')] API not configured — skip"
+    exit 0
+fi
+if [[ ! -f /opt/cipi/api/artisan ]]; then
+    echo "[$(date '+%F %T')] Panel API not installed — skip"
+    exit 0
+fi
+
+echo "[$(date '+%F %T')] cipi-api-update start"
+/usr/local/bin/cipi api update
+rc=$?
+if [[ $rc -eq 0 ]]; then
+    echo "[$(date '+%F %T')] cipi-api-update done"
+else
+    echo "[$(date '+%F %T')] cipi-api-update failed (exit $rc)"
+fi
+exit $rc
+UPDATE
+    chmod 755 /usr/local/bin/cipi-api-update
+    chown root:root /usr/local/bin/cipi-api-update
+
     # Logrotate for the maintenance log (don't grow forever).
     if [[ -d /etc/logrotate.d ]]; then
         cat > /etc/logrotate.d/cipi-api-maintain <<'LR'
 /var/log/cipi-api-maintain.log {
+    weekly
+    missingok
+    rotate 8
+    compress
+    delaycompress
+    notifempty
+    copytruncate
+}
+LR
+        cat > /etc/logrotate.d/cipi-api-update <<'LR'
+/var/log/cipi-api-update.log {
     weekly
     missingok
     rotate 8
@@ -666,6 +756,7 @@ api_update() {
     chown -R www-data:www-data "${CIPI_API_ROOT}" 2>/dev/null || true
     (cd "${CIPI_API_ROOT}" && sudo -u www-data php artisan vendor:publish --tag=cipi-assets --force 2>/dev/null) || true
     (cd "${CIPI_API_ROOT}" && sudo -u www-data php artisan migrate --force 2>/dev/null) || true
+    _api_sync_token_abilities_file 2>/dev/null || true
     _api_ensure_log_stack_env
     _api_ensure_session_driver_env
     _api_apply_sqlite_pragmas
@@ -680,6 +771,10 @@ api_update() {
     _api_show_versions
 
     log_action "API UPDATED"
+    cipi_notify \
+        "Cipi API updated on $(hostname)" \
+        "The panel API was updated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        api_update
     echo ""; success "API updated successfully"; echo ""
 }
 
@@ -759,6 +854,11 @@ api_upgrade() {
     (cd /tmp/cipi-api-build && php artisan vendor:publish --tag=cipi-assets --force 2>/dev/null) || true
     (cd /tmp/cipi-api-build && php artisan migrate --force 2>/dev/null) || true
     (cd /tmp/cipi-api-build && php artisan cipi:seed-user 2>/dev/null) || true
+    if [[ -f /tmp/cipi-api-build/vendor/cipi/api/token-abilities.txt ]]; then
+        cp /tmp/cipi-api-build/vendor/cipi/api/token-abilities.txt /tmp/cipi-api-build/token-abilities.txt
+    elif [[ -f /opt/cipi/cipi-api/token-abilities.txt ]]; then
+        cp /opt/cipi/cipi-api/token-abilities.txt /tmp/cipi-api-build/token-abilities.txt
+    fi
     [[ -f /tmp/cipi-api-build/routes/web.php ]] && \
         sed -i "s/view('welcome')/view('cipi::welcome')/g" /tmp/cipi-api-build/routes/web.php
     success "Migrations & assets"
@@ -769,6 +869,7 @@ api_upgrade() {
     mv "${CIPI_API_ROOT}" "${CIPI_API_ROOT}.old" 2>/dev/null || true
     mv /tmp/cipi-api-build "${CIPI_API_ROOT}"
     chown -R www-data:www-data "${CIPI_API_ROOT}"
+    _api_sync_token_abilities_file 2>/dev/null || true
     _api_ensure_log_stack_env
     _api_ensure_session_driver_env
     _api_apply_sqlite_pragmas
@@ -783,6 +884,10 @@ api_upgrade() {
     _api_show_versions
 
     log_action "API UPGRADED (full rebuild)"
+    cipi_notify \
+        "Cipi API upgraded on $(hostname)" \
+        "The panel API was fully rebuilt.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        api_upgrade
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo -e "  ${GREEN}${BOLD}Upgrade complete${NC}"
@@ -895,6 +1000,10 @@ api_ssl() {
         --redirect 2>&1; then
         nginx -t 2>&1 && systemctl reload nginx 2>/dev/null || true
         log_action "API SSL INSTALLED: $domain"
+        cipi_notify \
+            "Cipi API SSL installed: ${domain} on $(hostname)" \
+            "SSL was installed for the panel API.\n\nServer: $(hostname)\nDomain: ${domain}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            api_ssl
         echo ""; success "SSL installed for ${domain}"; echo ""
     else
         echo ""; error "SSL failed. Check DNS, port 80, and domain."; exit 1

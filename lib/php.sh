@@ -54,7 +54,12 @@ pm.max_children = 2
 pm.process_idle_timeout = 10s
 POOLEOF
     systemctl restart "php${v}-fpm"; systemctl enable "php${v}-fpm"
-    log_action "PHP INSTALLED: $v"; success "PHP ${v} installed"
+    log_action "PHP INSTALLED: $v"
+    cipi_notify \
+        "Cipi PHP installed: ${v} on $(hostname)" \
+        "A PHP version was installed.\n\nServer: $(hostname)\nVersion: ${v}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        php_install
+    success "PHP ${v} installed"
 }
 
 _php_switch() {
@@ -103,7 +108,8 @@ _php_switch() {
 
     cipi_notify \
         "Cipi system PHP switched on $(hostname)" \
-        "The system default PHP was changed.\n\nServer: $(hostname)\nFrom: ${cur:-unknown}\nTo: ${v}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "The system default PHP was changed.\n\nServer: $(hostname)\nFrom: ${cur:-unknown}\nTo: ${v}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        php_switch
 
     echo ""
     echo -e "  ${GREEN}${BOLD}System PHP switched to ${v}${NC}"
@@ -125,7 +131,12 @@ _php_remove() {
     confirm "Remove PHP ${v}?" || return
     systemctl stop "php${v}-fpm" 2>/dev/null; systemctl disable "php${v}-fpm" 2>/dev/null
     apt-get purge -y "php${v}-*" &>/dev/null; apt-get autoremove -y &>/dev/null
-    log_action "PHP REMOVED: $v"; success "PHP ${v} removed"
+    log_action "PHP REMOVED: $v"
+    cipi_notify \
+        "Cipi PHP removed: ${v} on $(hostname)" \
+        "A PHP version was removed.\n\nServer: $(hostname)\nVersion: ${v}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        php_remove
+    success "PHP ${v} removed"
 }
 
 _php_list() {

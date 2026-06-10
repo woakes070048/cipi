@@ -202,6 +202,10 @@ _sync_export() {
     fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_action "SYNC EXPORT: ${#apps[@]} apps (${apps[*]}) db=${with_db} storage=${with_storage} → ${archive}"
+    cipi_notify \
+        "Cipi sync export on $(hostname)" \
+        "Apps were exported.\n\nServer: $(hostname)\nApps: ${apps[*]}\nArchive: ${archive}\nWith DB: ${with_db}\nWith storage: ${with_storage}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        sync_export
     [[ "$internal_push" == "true" ]] && _SYNC_LAST_ARCHIVE="$archive"
 }
 
@@ -486,6 +490,10 @@ _sync_import() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     log_action "SYNC IMPORT: created=${#imported[@]} (${imported[*]}) updated=${#updated[@]} (${updated[*]}) from ${src_host} (${src_ip})"
+    cipi_notify \
+        "Cipi sync import on $(hostname)" \
+        "Apps were imported.\n\nServer: $(hostname)\nCreated: ${imported[*]:-none}\nUpdated: ${updated[*]:-none}\nFrom: ${src_host} (${src_ip})\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        sync_import
 }
 
 # ── CREATE APP (fresh import) ─────────────────────────────────
@@ -966,6 +974,10 @@ _sync_push() {
     fi
 
     log_action "SYNC PUSH: → ${remote_user}@${remote_host}:${remote_port} import=${remote_import}"
+    cipi_notify \
+        "Cipi sync push on $(hostname)" \
+        "Apps were pushed to a remote server.\n\nServer: $(hostname)\nRemote: ${remote_user}@${remote_host}:${remote_port}\nImport on remote: ${remote_import}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        sync_push
 }
 
 # ── PUBKEY (show this server's sync public key) ──────────────

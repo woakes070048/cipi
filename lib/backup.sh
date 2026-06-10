@@ -175,7 +175,10 @@ _bk_run() {
     rm -rf "$tmp"
 
     if [[ -n "$backup_errors" ]]; then
-        cipi_notify "Cipi backup failed: ${backup_errors}" "Backup completed with errors for: ${backup_errors}. Check logs: /var/log/cipi/cipi.log"
+        cipi_notify \
+            "Cipi backup failed: ${backup_errors}" \
+            "Backup completed with errors for: ${backup_errors}. Check logs: /var/log/cipi/cipi.log" \
+            backup_fail
     fi
     success "Backup complete"
 }

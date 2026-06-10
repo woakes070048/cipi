@@ -316,7 +316,8 @@ JSON
     fi
     cipi_notify \
         "Cipi app created: ${app_user} on $(hostname)" \
-        "A new app was created.\n\nServer: $(hostname)\nApp: ${app_user}\nDomain: ${domain}\nPHP: ${php_ver}\nBranch: ${_notify_branch}\nRepository: ${_notify_repo}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "A new app was created.\n\nServer: $(hostname)\nApp: ${app_user}\nDomain: ${domain}\nPHP: ${php_ver}\nBranch: ${_notify_branch}\nRepository: ${_notify_repo}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        app_create
 
     # 9. Supervisor (Laravel only)
     step "Queue worker..."
@@ -645,7 +646,8 @@ app_edit() {
         [[ -n "${ARG_repository:-}" ]] && edit_details="${edit_details}Repository: ${ARG_repository}\n"
         cipi_notify \
             "Cipi app modified: ${app} on $(hostname)" \
-            "An app was modified.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\n\nChanges:\n${edit_details}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+            "An app was modified.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\n\nChanges:\n${edit_details}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            app_edit
     fi
 }
 
@@ -693,7 +695,8 @@ app_delete() {
     # Email notification
     cipi_notify \
         "Cipi app deleted: ${app} on $(hostname)" \
-        "An app was deleted.\n\nServer: $(hostname)\nApp: ${app}\nDomain: ${d}\nPHP: ${p}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "An app was deleted.\n\nServer: $(hostname)\nApp: ${app}\nDomain: ${d}\nPHP: ${p}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        app_delete
 
     echo ""; success "'${app}' deleted"; echo ""
 }
@@ -761,6 +764,10 @@ alias_add() {
     ensure_apps_json_api_access
     _create_nginx_vhost "$app" "$(app_get "$app" domain)" "$(app_get "$app" php)"; reload_nginx
     log_action "ALIAS ADDED: $dom → $app"
+    cipi_notify \
+        "Cipi alias added: ${dom} → ${app} on $(hostname)" \
+        "A domain alias was added.\n\nServer: $(hostname)\nApp: ${app}\nAlias: ${dom}\nPrimary: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        alias_add
     success "'${dom}' added to '${app}'"
     info "Run: cipi ssl install ${app}  (to update certificate)"
 }
@@ -772,6 +779,11 @@ alias_remove() {
     vault_read apps.json | jq --arg a "$app" --arg d "$dom" '.[$a].aliases-=[$d]' | vault_write apps.json
     ensure_apps_json_api_access
     _create_nginx_vhost "$app" "$(app_get "$app" domain)" "$(app_get "$app" php)"; reload_nginx
+    log_action "ALIAS REMOVED: $dom ← $app"
+    cipi_notify \
+        "Cipi alias removed: ${dom} from ${app} on $(hostname)" \
+        "A domain alias was removed.\n\nServer: $(hostname)\nApp: ${app}\nAlias: ${dom}\nPrimary: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        alias_remove
     success "'${dom}' removed from '${app}'"
 }
 
@@ -1171,6 +1183,10 @@ JSON
     fi
 
     log_action "AUTH CREATED: $app"
+    cipi_notify \
+        "Cipi auth.json created: ${app} on $(hostname)" \
+        "Composer auth.json was created.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        auth_create
     success "auth.json created at ${auth_file}"
     info "Edit it with: cipi auth edit ${app}"
 }
@@ -1184,6 +1200,10 @@ auth_edit() {
     if jq empty "$auth_file" 2>/dev/null; then
         chown "${app}:${app}" "$auth_file"; chmod 640 "$auth_file"
         log_action "AUTH EDITED: $app"
+        cipi_notify \
+            "Cipi auth.json edited: ${app} on $(hostname)" \
+            "Composer auth.json was edited.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            auth_edit
         success "auth.json updated"
     else
         error "Invalid JSON — file saved but may be malformed. Fix it manually: ${auth_file}"
@@ -1215,6 +1235,10 @@ auth_delete() {
     fi
 
     log_action "AUTH DELETED: $app"
+    cipi_notify \
+        "Cipi auth.json deleted: ${app} on $(hostname)" \
+        "Composer auth.json was deleted.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        auth_delete
     success "auth.json deleted for '${app}'"
 }
 
@@ -1303,7 +1327,8 @@ basicauth_enable() {
     log_action "BASICAUTH ENABLED: $app user=$user"
     cipi_notify \
         "Cipi basic auth enabled: ${app} on $(hostname)" \
-        "HTTP basic auth was enabled.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nUser: ${user}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "HTTP basic auth was enabled.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nUser: ${user}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        basicauth_enable
 
     echo ""
     echo -e "  ${BOLD}Basic auth${NC}  ${GREEN}enabled${NC} for ${CYAN}$(app_get "$app" domain)${NC}"
@@ -1335,7 +1360,8 @@ basicauth_disable() {
     log_action "BASICAUTH DISABLED: $app"
     cipi_notify \
         "Cipi basic auth disabled: ${app} on $(hostname)" \
-        "HTTP basic auth was disabled.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "HTTP basic auth was disabled.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        basicauth_disable
 }
 
 basicauth_status() {
@@ -1391,7 +1417,8 @@ app_suspend() {
     log_action "APP SUSPENDED: $app"
     cipi_notify \
         "Cipi app suspended: ${app} on $(hostname)" \
-        "An app was suspended and is now serving the offline page.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "An app was suspended and is now serving the offline page.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        app_suspend
 
     echo ""
     echo -e "  ${BOLD}Status${NC}  ${YELLOW}suspended${NC} for ${CYAN}$(app_get "$app" domain)${NC}"
@@ -1418,7 +1445,8 @@ app_unsuspend() {
     log_action "APP UNSUSPENDED: $app"
     cipi_notify \
         "Cipi app unsuspended: ${app} on $(hostname)" \
-        "An app was unsuspended and is back online.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "An app was unsuspended and is back online.\n\nServer: $(hostname)\nApp: ${app}\nDomain: $(app_get "$app" domain)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        app_unsuspend
 }
 
 # ── RESET PASSWORDS ───────────────────────────────────────────
@@ -1436,7 +1464,8 @@ app_reset_password() {
 
     cipi_notify \
         "Cipi app SSH password reset: ${app} on $(hostname)" \
-        "The SSH password for app '${app}' was regenerated.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "The SSH password for app '${app}' was regenerated.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        app_ssh_password_reset
 
     echo ""
     echo -e "${GREEN}✓${NC} New SSH password for '${app}': ${CYAN}${new_pass}${NC}"
@@ -1471,7 +1500,8 @@ SQL
 
     cipi_notify \
         "Cipi app DB password reset: ${app} on $(hostname)" \
-        "The database password for app '${app}' was regenerated.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "The database password for app '${app}' was regenerated.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        app_db_password_reset
 
     echo ""
     echo -e "${GREEN}✓${NC} New DB password for '${app}': ${CYAN}${new_pass}${NC}"

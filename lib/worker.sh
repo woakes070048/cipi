@@ -31,6 +31,10 @@ _worker_add() {
     reload_supervisor
     supervisorctl start "${app}-worker-${queue}:*" 2>/dev/null
     log_action "WORKER ADD: $app queue=$queue procs=$procs"
+    cipi_notify \
+        "Cipi worker added: ${app} (${queue}) on $(hostname)" \
+        "A queue worker was added.\n\nServer: $(hostname)\nApp: ${app}\nQueue: ${queue}\nProcesses: ${procs}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        worker_add
     success "Worker '${queue}' added (${procs} processes)"
 }
 
@@ -64,6 +68,10 @@ _worker_remove() {
     mv "$tmp" "$conf"; [[ ! -s "$conf" ]] && rm -f "$conf"
     reload_supervisor
     log_action "WORKER REMOVE: $app queue=$queue"
+    cipi_notify \
+        "Cipi worker removed: ${app} (${queue}) on $(hostname)" \
+        "A queue worker was removed.\n\nServer: $(hostname)\nApp: ${app}\nQueue: ${queue}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        worker_remove
     success "Worker '${queue}' removed"
 }
 

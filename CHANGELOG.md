@@ -4,6 +4,19 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.6.3] — 2026-06-10
+
+### Added
+
+- **`cipi notifications`** — granular email trigger control when SMTP is configured. **`cipi notifications list`** shows every event grouped by category (apps, deploy, SSL, aliases, PHP, security, cron, …) with on/off status; **`enable` / `disable <trigger>`**, **`enable-all`**, **`disable-all`**, and **`reset`** toggle what gets emailed. All triggers are **on by default**; events are always logged to **`/var/log/cipi/events.log`** regardless. Config: **`/etc/cipi/notifications.json`**. **`cipi_notify()`** and the PAM / cron / webhook helpers (`cipi-auth-notify`, `cipi-cron-notify`, `cipi-app-notify`) respect the trigger map. New notifications were added for actions that previously only logged (aliases, SSL, deploy success/rollback, PHP install/remove, DB create/delete, workers, API, git, sync, services). **Migration 4.6.3** seeds `notifications.json` on existing servers.
+
+### Changed
+
+- **`cipi api token create` ability list** — reads `token-abilities.txt` from the panel API package (includes **`status-view`**, **`apps-suspend`**, **`apps-basicauth`**, and all other REST abilities). **`lib/migrations/4.6.3.sh`** retrofits existing servers: writes `/opt/cipi/api/token-abilities.txt` and patches `lib/api.sh` when it still has the legacy 14-line hardcoded list.
+- **Nightly panel API update** — **`/usr/local/bin/cipi-api-update`** runs **`cipi api update`** (soft `composer update` + migrations) every night at **04:30** via **`/etc/cron.d/cipi-api`**, wrapped with **`cipi-cron-notify`** for failure alerts. Log: **`/var/log/cipi-api-update.log`**.
+
+---
+
 ## [4.6.2] — 2026-06-09
 
 ### Added

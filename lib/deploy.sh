@@ -71,11 +71,18 @@ _deploy_run() {
     if [[ $rc -eq 0 ]]; then
         success "Deploy completed"
         log_action "DEPLOY OK: $app"
+        cipi_notify \
+            "Cipi deploy succeeded: ${app} on $(hostname)" \
+            "Deploy completed successfully.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            deploy_success
     else
         error "Deploy failed (exit $rc)"
         warn "Rollback: cipi deploy ${app} --rollback"
         log_action "DEPLOY FAIL: $app exit=$rc"
-        cipi_notify "Cipi deploy failed: ${app}" "Deploy exited with code ${rc}. Rollback: cipi deploy ${app} --rollback"
+        cipi_notify \
+            "Cipi deploy failed: ${app}" \
+            "Deploy exited with code ${rc}. Rollback: cipi deploy ${app} --rollback" \
+            deploy_fail
     fi
 }
 
@@ -98,7 +105,16 @@ _deploy_rollback() {
     confirm "Rollback '${app}'?" || { info "Cancelled"; return; }
     info "Rolling back..."
     sudo -u "$app" bash -c "cd ${home} && /usr/bin/php${php_ver} /usr/local/bin/dep rollback -f ${home}/.deployer/deploy.php 2>&1"
-    [[ $? -eq 0 ]] && success "Rollback done" || error "Rollback failed"
+    local rc=$?
+    if [[ $rc -eq 0 ]]; then
+        success "Rollback done"
+        cipi_notify \
+            "Cipi deploy rollback: ${app} on $(hostname)" \
+            "Deploy rollback completed.\n\nServer: $(hostname)\nApp: ${app}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            deploy_rollback
+    else
+        error "Rollback failed"
+    fi
     log_action "ROLLBACK: $app"
 }
 

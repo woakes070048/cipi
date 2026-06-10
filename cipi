@@ -166,7 +166,10 @@ show_help() {
     echo -e "    ${CYAN}cipi smtp status${NC}                    SMTP status"
     echo -e "    ${CYAN}cipi smtp test${NC}                      Send test email"
     echo -e "    ${CYAN}cipi smtp disable|enable|delete${NC}     Toggle or remove"
-    echo -e "    ${DIM}  Alerts on backup/deploy failures, sudo and SSH logins${NC}"
+    echo -e "    ${CYAN}cipi notifications list${NC}             List email triggers"
+    echo -e "    ${CYAN}cipi notifications enable|disable <t>${NC}  Toggle a trigger"
+    echo -e "    ${CYAN}cipi notifications enable-all|disable-all|reset${NC}"
+    echo -e "    ${DIM}  All triggers on by default; choose what to send when SMTP is set${NC}"
     echo ""
     echo -e "  ${BOLD}${CYAN}RESET${NC}"
     echo -e "    ${CYAN}cipi reset root-password${NC}            Reset root SSH password"
@@ -245,7 +248,8 @@ main() {
         git)        require_root; source "${CIPI_LIB}/git.sh";       git_command "$@" ;;
         sync)       require_root; source "${CIPI_LIB}/sync.sh";      sync_command "$@" ;;
         ssh)        require_root; source "${CIPI_LIB}/ssh.sh";       ssh_command "$@" ;;
-        smtp)       require_root; source "${CIPI_LIB}/smtp.sh";      smtp_command "$@" ;;
+        smtp)           require_root; source "${CIPI_LIB}/smtp.sh";           smtp_command "$@" ;;
+        notifications)  require_root; source "${CIPI_LIB}/notifications.sh"; notifications_command "$@" ;;
         reset)      require_root; source "${CIPI_LIB}/reset.sh";     reset_command "$@" ;;
         *) error "Unknown command: $cmd"; echo "Run 'cipi help'"; exit 1 ;;
     esac

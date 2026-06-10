@@ -15,6 +15,7 @@ readonly SMTP_CFG="${CIPI_CONFIG}/smtp.json"
 readonly SMTP_RC="${CIPI_CONFIG}/.msmtprc"
 
 source "${CIPI_LIB}/vault.sh"
+source "${CIPI_LIB}/notifications.sh" 2>/dev/null || true
 
 OUTPUT=$("$@" 2>&1)
 RC=$?
@@ -33,7 +34,10 @@ ${OUTPUT:-<no output>}"
     mkdir -p "$CIPI_LOG" 2>/dev/null || true
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [local] [key:n/a] ${SUBJECT}" >> "${CIPI_LOG}/events.log" 2>/dev/null || true
 
-    # Send email (only if SMTP configured)
+    # Send email (only if SMTP configured and trigger enabled)
+    if declare -f _notify_trigger_enabled &>/dev/null && ! _notify_trigger_enabled "cron_fail"; then
+        exit $RC
+    fi
     [[ ! -f "$SMTP_CFG" ]] && exit $RC
     _SJ=$(vault_read smtp.json 2>/dev/null) || exit $RC
     [[ "$(echo "$_SJ" | jq -r '.enabled // false')" != "true" ]] && exit $RC

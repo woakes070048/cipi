@@ -151,6 +151,8 @@ _should_suppress_privileged_to_inferior() {
 
 # ── Build event ──────────────────────────────────────────────
 
+NOTIFY_TRIGGER=""
+
 case "$SERVICE" in
     sudo)
         _is_internal && exit 0
@@ -160,6 +162,7 @@ case "$SERVICE" in
         [[ -z "$SSH_KEY_NAME" ]] && SSH_KEY_NAME="unknown"
         DISPLAY_FROM="${RESOLVED_CLIENT_IP:-$RHOST}"
         SUDO_CMD="${SUDO_COMMAND:-}"
+        NOTIFY_TRIGGER="sudo"
         SUBJECT="Cipi security: sudo by ${SUDO_BY} (${HOSTNAME})"
         BODY="Sudo elevation detected on ${HOSTNAME}
 
@@ -178,6 +181,7 @@ Time:      ${TIMESTAMP}"
         SSH_KEY_NAME=$(_resolve_ssh_key_name "$USER")
         [[ -z "$SSH_KEY_NAME" ]] && SSH_KEY_NAME="unknown"
         DISPLAY_FROM="${RESOLVED_CLIENT_IP:-$RHOST}"
+        NOTIFY_TRIGGER="ssh_login"
         SUBJECT="Cipi security: SSH login ${USER}@${HOSTNAME}"
         BODY="SSH login detected on ${HOSTNAME}
 
@@ -195,6 +199,7 @@ Time:      ${TIMESTAMP}"
         SSH_KEY_NAME=$(_resolve_ssh_key_name "$SU_BY")
         [[ -z "$SSH_KEY_NAME" ]] && SSH_KEY_NAME="unknown"
         DISPLAY_FROM="${RESOLVED_CLIENT_IP:-$RHOST}"
+        NOTIFY_TRIGGER="su"
         SUBJECT="Cipi security: su to ${USER} by ${SU_BY} (${HOSTNAME})"
         BODY="su elevation detected on ${HOSTNAME}
 
@@ -224,6 +229,11 @@ readonly SMTP_RC="${CIPI_CONFIG}/.msmtprc"
 [[ -f "$SMTP_RC" ]] || exit 0
 
 source "${CIPI_LIB}/vault.sh" 2>/dev/null || exit 0
+source "${CIPI_LIB}/notifications.sh" 2>/dev/null || true
+
+if [[ -n "$NOTIFY_TRIGGER" ]] && declare -f _notify_trigger_enabled &>/dev/null && ! _notify_trigger_enabled "$NOTIFY_TRIGGER"; then
+    exit 0
+fi
 
 _SJ=$(vault_read smtp.json 2>/dev/null) || exit 0
 [[ "$(echo "$_SJ" | jq -r '.enabled // false')" == "true" ]] || exit 0

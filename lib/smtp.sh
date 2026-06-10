@@ -72,8 +72,8 @@ _smtp_configure() {
         [[ "$(echo "$_sj" | jq -r '.enabled // true')" == "true" ]] && enabled="on" || enabled="off"
     fi
 
-    echo -e "\n${BOLD}SMTP — Email notifications for Cipi errors${NC}"
-    echo -e "${DIM}Configure an SMTP server to receive alerts on backup/deploy/cron failures.${NC}\n"
+    echo -e "\n${BOLD}SMTP — Email notifications${NC}"
+    echo -e "${DIM}Configure SMTP, then use ${CYAN}cipi notifications${NC}${DIM} to choose which events send email.${NC}\n"
 
     read_input "SMTP host (e.g. smtp.gmail.com)" "$host" host
     read_input "SMTP port" "${port}" port
@@ -148,7 +148,7 @@ _smtp_status() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     if [[ ! -f "$SMTP_CFG" ]]; then
         echo -e "  ${DIM}Not configured${NC}"
-        echo -e "  Run ${CYAN}cipi smtp configure${NC} to enable error notifications"
+        echo -e "  Run ${CYAN}cipi smtp configure${NC} to enable email notifications"
         echo ""
         return
     fi
@@ -184,12 +184,16 @@ _smtp_test() {
 }
 
 # Called from common.sh and other scripts — sends notification if SMTP is configured
+# Optional 3rd arg: trigger id (see: cipi notifications list)
 cipi_notify() {
-    local subject="$1" body="$2"
+    local subject="$1" body="$2" trigger="${3:-}"
     [[ -z "$subject" || -z "$body" ]] && return 0
     local client_ip; client_ip=$(_get_client_ip 2>/dev/null || echo "n/a")
     local key_name; key_name=$(_get_session_key_name 2>/dev/null || echo "n/a")
     log_event "$subject"
+    if [[ -n "$trigger" ]] && declare -f _notify_trigger_enabled &>/dev/null && ! _notify_trigger_enabled "$trigger"; then
+        return 0
+    fi
     body="${body}\n\n---\nPerformed by: ${client_ip}\nSSH Key: ${key_name}"
     _smtp_send "$subject" "$body" || true
 }

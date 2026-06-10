@@ -21,7 +21,8 @@ reset_root_password() {
 
     cipi_notify \
         "Cipi root SSH password reset on $(hostname)" \
-        "The root SSH password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "The root SSH password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        reset_root_password
 
     echo ""
     echo -e "${GREEN}✓${NC} New root password: ${CYAN}${new_pass}${NC}"
@@ -49,7 +50,8 @@ reset_db_root_password() {
 
     cipi_notify \
         "Cipi DB root password reset on $(hostname)" \
-        "The MariaDB root password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "The MariaDB root password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        reset_db_password
 
     echo ""
     echo -e "${GREEN}✓${NC} New MariaDB root password: ${CYAN}${new_pass}${NC}"
@@ -83,7 +85,8 @@ reset_valkey_password() {
 
     cipi_notify \
         "Cipi Valkey password reset on $(hostname)" \
-        "The Valkey password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "The Valkey password was regenerated.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        reset_valkey_password
 
     echo ""
     echo -e "${GREEN}✓${NC} New Valkey password: ${CYAN}${new_pass}${NC}"

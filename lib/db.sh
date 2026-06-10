@@ -35,6 +35,10 @@ SQL
         jq --arg n "$name" --arg u "$user" '.[$n]={"user":$u,"created_at":(now|strftime("%Y-%m-%dT%H:%M:%SZ"))}' | \
         vault_write databases.json
     log_action "DB CREATED: $name"
+    cipi_notify \
+        "Cipi database created: ${name} on $(hostname)" \
+        "A database was created.\n\nServer: $(hostname)\nDatabase: ${name}\nUser: ${user}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        db_create
     echo -e "\n${GREEN}✓${NC} Database: ${CYAN}${name}${NC}  User: ${CYAN}${user}${NC}  Password: ${CYAN}${pass}${NC}"
     echo -e "${YELLOW}Save this password!${NC}\n"
 }
@@ -60,7 +64,12 @@ _db_delete() {
     local u; u=$(vault_read databases.json | jq -r --arg n "$name" '.[$n].user//$n' 2>/dev/null)
     mariadb -u root -p"$dbr" -e "DROP DATABASE IF EXISTS \`${name}\`; DROP USER IF EXISTS '${u}'@'localhost'; FLUSH PRIVILEGES;" 2>/dev/null
     vault_read databases.json | jq --arg n "$name" 'del(.[$n])' | vault_write databases.json
-    log_action "DB DELETED: $name"; success "'${name}' deleted"
+    log_action "DB DELETED: $name"
+    cipi_notify \
+        "Cipi database deleted: ${name} on $(hostname)" \
+        "A database was deleted.\n\nServer: $(hostname)\nDatabase: ${name}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        db_delete
+    success "'${name}' deleted"
 }
 
 _db_backup() {

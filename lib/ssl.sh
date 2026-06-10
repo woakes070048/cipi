@@ -61,6 +61,10 @@ _ssl_install() {
 
         sed -i "s|^APP_URL=http://|APP_URL=https://|" "/home/${app}/shared/.env" 2>/dev/null || true
         log_action "SSL INSTALLED: $app"
+        cipi_notify \
+            "Cipi SSL installed: ${d} (${app}) on $(hostname)" \
+            "An SSL certificate was installed.\n\nServer: $(hostname)\nApp: ${app}\nDomain: ${d}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+            ssl_install
         echo ""
         success "SSL installed for ${d}"
     else
@@ -74,6 +78,11 @@ _ssl_renew() {
     step "Renewing certificates..."
     certbot renew --nginx --non-interactive 2>&1
     systemctl reload nginx 2>/dev/null
+    log_action "SSL RENEWED"
+    cipi_notify \
+        "Cipi SSL renewed on $(hostname)" \
+        "SSL certificates were renewed.\n\nServer: $(hostname)\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        ssl_renew
     success "Renewal complete"
 }
 

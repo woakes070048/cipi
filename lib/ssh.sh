@@ -135,7 +135,8 @@ _ssh_add() {
     local server_ip; server_ip=$(curl -s --max-time 3 https://checkip.amazonaws.com 2>/dev/null || hostname)
     cipi_notify \
         "Cipi SSH key added on $(hostname)" \
-        "An SSH key was added to the cipi user.\n\nServer: $(hostname) (${server_ip})\nComment: ${comment}\nFingerprint: ${fingerprint}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "An SSH key was added to the cipi user.\n\nServer: $(hostname) (${server_ip})\nComment: ${comment}\nFingerprint: ${fingerprint}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        ssh_key_add
 }
 
 # ── RENAME ──────────────────────────────────────────────────
@@ -240,7 +241,8 @@ _ssh_rename() {
     local server_ip; server_ip=$(curl -s --max-time 3 https://checkip.amazonaws.com 2>/dev/null || hostname)
     cipi_notify \
         "Cipi SSH key renamed on $(hostname)" \
-        "An SSH key was renamed on the cipi user.\n\nServer: $(hostname) (${server_ip})\nOld name: ${old_comment}\nNew name: ${new_name}\nFingerprint: ${fingerprint}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        "An SSH key was renamed on the cipi user.\n\nServer: $(hostname) (${server_ip})\nOld name: ${old_comment}\nNew name: ${new_name}\nFingerprint: ${fingerprint}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')" \
+        ssh_key_rename
 }
 
 # ── REMOVE ───────────────────────────────────────────────────
@@ -357,5 +359,6 @@ _ssh_remove() {
     local server_ip; server_ip=$(curl -s --max-time 3 https://checkip.amazonaws.com 2>/dev/null || hostname)
     cipi_notify \
         "Cipi SSH key removed on $(hostname)" \
-        "An SSH key was removed from the cipi user.\n\nServer: $(hostname) (${server_ip})\nComment: ${removed_comment}\nFingerprint: ${removed_fp}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')\nRemaining keys: $((${#keys[@]} - 1))"
+        "An SSH key was removed from the cipi user.\n\nServer: $(hostname) (${server_ip})\nComment: ${removed_comment}\nFingerprint: ${removed_fp}\nTime: $(date '+%Y-%m-%d %H:%M:%S %Z')\nRemaining keys: $((${#keys[@]} - 1))" \
+        ssh_key_remove
 }
