@@ -77,11 +77,44 @@ check_requirements() {
     echo -e "${GREEN}✓ Ubuntu $VERSION_ID — root${NC}"
 }
 
+# ── APT HELPERS (bootstrap lib/php-apt.sh before /opt/cipi exists) ──
+
+_cipi_source_apt_helpers() {
+    if [[ -f "${CIPI_LIB}/php-apt.sh" ]]; then
+        # shellcheck source=/dev/null
+        source "${CIPI_LIB}/php-apt.sh"
+        return 0
+    fi
+    local dest="/tmp/cipi-php-apt-$$.sh"
+    local url="https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/lib/php-apt.sh"
+    if curl -fsSL "$url" -o "$dest" 2>/dev/null; then
+        # shellcheck source=/dev/null
+        source "$dest"
+        rm -f "$dest"
+        return 0
+    fi
+    rm -f "$dest"
+    return 1
+}
+
+_cipi_sanitize_known_broken_apt_sources() {
+    local cn
+    cn="$(lsb_release -cs 2>/dev/null || true)"
+    case "$cn" in
+        resolute|questing)
+            rm -f /etc/apt/sources.list.d/mariadb.list
+            rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php*.list \
+                  /etc/apt/sources.list.d/ondrej-ubuntu-php*.sources 2>/dev/null || true
+            ;;
+    esac
+}
+
 # ── BASE PACKAGES ─────────────────────────────────────────────
 
 install_basics() {
     step_msg "Installing base packages..."
 
+    _cipi_sanitize_known_broken_apt_sources
     apt-get update -qq
     apt-get install -y -qq \
         software-properties-common curl wget nano vim git \
@@ -512,10 +545,13 @@ EOF
 install_mariadb() {
     step_msg "Installing MariaDB..."
 
-    # MariaDB official repo for latest stable
-    curl -fsSL https://mariadb.org/mariadb_release_signing_key.pgp | gpg --dearmor -o /usr/share/keyrings/mariadb-keyring.gpg 2>/dev/null
-
-    echo "deb [signed-by=/usr/share/keyrings/mariadb-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/mariadb.list
+    local mariadb_label="Ubuntu archive"
+    _cipi_source_apt_helpers && cipi_sanitize_broken_apt_sources 2>/dev/null || _cipi_sanitize_known_broken_apt_sources
+    if _cipi_source_apt_helpers && mariadb_setup_apt_repo; then
+        mariadb_label="MariaDB.org 11.4"
+    else
+        rm -f /etc/apt/sources.list.d/mariadb.list
+    fi
 
     apt-get update -qq
     apt-get install -y -qq mariadb-server mariadb-client
@@ -569,7 +605,7 @@ CNFEOF
     mv "$tmp" /etc/cipi/server.json
     chmod 600 /etc/cipi/server.json
 
-    echo -e "${GREEN}✓ MariaDB 11.4 (buffer_pool: ${BUFFER_POOL})${NC}"
+    echo -e "${GREEN}✓ MariaDB (${mariadb_label}, buffer_pool: ${BUFFER_POOL})${NC}"
 }
 
 # ── VALKEY ──────────────────────────────────────────────────
@@ -620,7 +656,14 @@ install_valkey() {
 install_php() {
     step_msg "Installing PHP 8.5..."
 
-    add-apt-repository -y ppa:ondrej/php &>/dev/null
+    _cipi_source_apt_helpers && cipi_sanitize_broken_apt_sources 2>/dev/null || _cipi_sanitize_known_broken_apt_sources
+    if _cipi_source_apt_helpers; then
+        if ! php_setup_apt_sources; then
+            echo -e "${YELLOW}→ No multi-PHP repo for this Ubuntu release — using archive packages${NC}"
+        fi
+    else
+        add-apt-repository -y ppa:ondrej/php &>/dev/null
+    fi
     apt-get update -qq
 
     local EXTENSIONS="fpm common cli curl bcmath mbstring mysql sqlite3 pgsql memcached redis zip xml soap gd imagick intl"

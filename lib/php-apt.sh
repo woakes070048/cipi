@@ -26,6 +26,40 @@ _mariadb_repo_release_available() {
         2>/dev/null | head -1 | grep -qE '^HTTP/[0-9.]+ 200'
 }
 
+# MariaDB.org 11.4 when the suite exists (noble, jammy, …); Ubuntu archive otherwise.
+# Returns 0 when the third-party repo was configured, 1 when using Ubuntu main only.
+mariadb_setup_apt_repo() {
+    local codename
+    codename="$(ubuntu_codename)"
+
+    if [[ -f /etc/apt/sources.list.d/mariadb.list ]] \
+       && ! _mariadb_repo_release_available "$codename"; then
+        rm -f /etc/apt/sources.list.d/mariadb.list
+    fi
+
+    if _mariadb_repo_release_available "$codename"; then
+        curl -fsSL https://mariadb.org/mariadb_release_signing_key.pgp \
+            | gpg --dearmor -o /usr/share/keyrings/mariadb-keyring.gpg 2>/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/mariadb-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu ${codename} main" \
+            > /etc/apt/sources.list.d/mariadb.list
+        return 0
+    fi
+
+    rm -f /etc/apt/sources.list.d/mariadb.list
+    return 1
+}
+
+mariadb_apt_source_label() {
+    local codename
+    codename="$(ubuntu_codename)"
+    if [[ -f /etc/apt/sources.list.d/mariadb.list ]] \
+       && _mariadb_repo_release_available "$codename"; then
+        echo "MariaDB.org 11.4"
+    else
+        echo "Ubuntu archive"
+    fi
+}
+
 # Launchpad ppa:ondrej/php — used on LTS releases with a published suite (e.g. noble).
 php_ondrej_ppa_available() {
     local codename="${1:-$(ubuntu_codename)}"

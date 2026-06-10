@@ -4,6 +4,14 @@ All notable changes to Cipi are documented in this file.
 
 ---
 
+## [4.6.6] — 2026-06-10
+
+### Fixed
+
+- **`setup.sh` MariaDB / PHP on Ubuntu 26.04 (resolute)** — the installer still always added the MariaDB.org **11.4** repo and **`ppa:ondrej/php`**, which have no **`resolute`** suite yet (*Release file not found* at *Installing MariaDB…*). `setup.sh` now bootstraps **`lib/php-apt.sh`** (curl from GitHub when `/opt/cipi` does not exist), sanitises broken third-party sources left by a partial install, uses **`mariadb_setup_apt_repo`** (MariaDB.org when available, otherwise **Ubuntu main** — 11.8.x on 26.04), and **`php_setup_apt_sources`** (ondrej → **packages.sury.org** → archive). **`mariadb_setup_apt_repo`** / **`mariadb_apt_source_label`** added to **`lib/php-apt.sh`**.
+
+---
+
 ## [4.6.5] — 2026-06-10
 
 ### Fixed
